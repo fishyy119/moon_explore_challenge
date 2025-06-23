@@ -17,7 +17,7 @@ from patterns import path_funcs
 from utils import Pose2D, angle_mod, plot_arrow
 
 
-class Path:
+class RPath:
     def __init__(self):
         self.lengths: List[float] = []  # course segment length  (negative value is backward segment)
         self.ctypes: List[str] = []  # course segment type char ("S": straight, "L": left, "R": right)
@@ -28,11 +28,11 @@ class Path:
         self.directions: List[int] = []  # directions (1:forward, -1:backward)
 
 
-def set_path(paths: List[Path], lengths: List[float], ctypes: List[str], step_size: float):
+def set_path(paths: List[RPath], lengths: List[float], ctypes: List[str], step_size: float):
     """
     这东西难道实际上不是add吗？
     """
-    path = Path()
+    path = RPath()
     path.ctypes = ctypes
     path.lengths = lengths
     path.L = sum(np.abs(lengths))
@@ -68,7 +68,7 @@ def generate_path(
     p1: Pose2D,
     max_curvature: float,
     step_size: float,
-) -> List[Path]:
+) -> List[RPath]:
     # 归一化
     dx = p1.x - p0.x
     dy = p1.y - p0.y
@@ -79,7 +79,7 @@ def generate_path(
     y = (-s * dx + c * dy) * max_curvature
     step_size *= max_curvature
 
-    paths: List[Path] = []
+    paths: List[RPath] = []
 
     for path_func in path_funcs.values():
         flag, travel_distances, steering_dirns = path_func(x, y, dth)
@@ -213,7 +213,7 @@ def calc_paths(
     p1: Pose2D,
     maxc: float,
     step_size: float,
-) -> List[Path]:
+) -> List[RPath]:
     """
     计算从起点到终点的所有可行 Reeds-Shepp 路径，并转换为全局坐标系下的路径。
 
@@ -226,7 +226,7 @@ def calc_paths(
         step_size (float): 路径采样的步长，决定生成路径的分辨率，单位 m。
 
     Returns:
-        List[Path]: 包含所有可行路径的列表，每个路径使用 Path 类描述。
+        List[RPath]: 包含所有可行路径的列表，每个路径使用 RPath 类描述。
     """
     paths = generate_path(p0, p1, maxc, step_size)
     for path in paths:
@@ -252,7 +252,7 @@ def reeds_shepp_path_planning(
     gyaw: float,
     maxc: float,
     step_size: float = 0.2,
-) -> Path | None:
+) -> RPath | None:
     p0 = Pose2D(sx, sy, syaw)
     p1 = Pose2D(gx, gy, gyaw)
     paths = calc_paths(p0, p1, maxc, step_size)

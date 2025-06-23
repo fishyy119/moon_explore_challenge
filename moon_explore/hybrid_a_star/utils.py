@@ -1,4 +1,6 @@
 import math
+from abc import ABC
+from pathlib import Path as fPath
 from typing import Callable, List, NamedTuple, Tuple
 
 import matplotlib.pyplot as plt
@@ -7,55 +9,44 @@ from numpy.typing import NDArray
 from scipy.spatial.transform import Rotation
 
 
-def angle_mod(x, zero_2_2pi=False, degree=False):
+class Settings:
+    class Car:
+        WB = 0.35  # rear to front wheel
+        W = 0.3  # width of car
+        LF = 0.2  # distance from rear to vehicle front end
+        LB = 0.2  # distance from rear to vehicle back end
+        MAX_STEER = 0.6  # [rad] maximum steering angle
+
+        BUBBLE_DIST = (LF - LB) / 2.0  # distance from rear to center of vehicle.
+        BUBBLE_R = np.hypot((LF + LB) / 2.0, W / 2.0)  # bubble radius
+
+        # vehicle rectangle vertices
+        VRX = [LF, LF, -LB, -LB, LF]
+        VRY = [W / 2, -W / 2, -W / 2, W / 2, W / 2]
+
+    class AStar:
+        XY_GRID_RESOLUTION = 0.1  # [m]
+        YAW_GRID_RESOLUTION = np.deg2rad(15.0)  # [rad]
+        MOTION_RESOLUTION = 0.01  # [m] path interpolate resolution
+        N_STEER = 20  # number of steer command
+
+        SB_PENALTY = 100.0  # 换向惩罚（非系数）
+        BACK_PENALTY = 5.0  # 倒车惩罚系数
+        STEER_CHANGE_PENALTY = 5.0  # 转向变化惩罚系数
+        STEER_PENALTY = 1.0  # 转向惩罚系数
+        H_COST = 5.0  # Heuristic cost(系数)
+
+    C = Car()
+    A = AStar()
+
+
+def angle_mod(angle: float):
     """
     Angle modulo operation
     Default angle modulo range is [-pi, pi)
-
-    Parameters
-    ----------
-    x : float or array_like
-        A angle or an array of angles. This array is flattened for
-        the calculation. When an angle is provided, a float angle is returned.
-    zero_2_2pi : bool, optional
-        Change angle modulo range to [0, 2pi)
-        Default is False.
-    degree : bool, optional
-        If True, then the given angles are assumed to be in degrees.
-        Default is False.
-
-    Returns
-    -------
-    ret : float or ndarray
-        an angle or an array of modulated angle.
-
-    Examples
-    --------
-    >>> angle_mod(-4.0)
-    2.28318531
-
-    >>> angle_mod([-4.0])
-    np.array(2.28318531)
-
-    >>> angle_mod([-150.0, 190.0, 350], degree=True)
-    array([-150., -170.,  -10.])
-
-    >>> angle_mod(-60.0, zero_2_2pi=True, degree=True)
-    array([300.])
-
     """
-    if degree:
-        x = np.deg2rad(x)
-
-    if zero_2_2pi:
-        mod_angle = x % (2 * np.pi)
-    else:
-        mod_angle = (x + np.pi) % (2 * np.pi) - np.pi
-
-    if degree:
-        mod_angle = np.rad2deg(mod_angle)
-
-    return (x + np.pi) % (2 * np.pi) - np.pi
+    pi = math.pi
+    return (angle + pi) % (2 * pi) - pi
 
 
 class PoseDiff(NamedTuple):
@@ -81,6 +72,8 @@ class Pose2D:
             self._yaw = math.radians(yaw)
         else:
             self._yaw = yaw
+        pi = math.pi
+        self._yaw = (self._yaw + pi) % (2 * pi) - pi
 
     @classmethod
     def from_pose_msg(cls, x, y, qx, qy, qz, qw) -> "Pose2D":
@@ -124,6 +117,7 @@ class Pose2D:
 
     @property
     def SO2inv(self) -> NDArray[np.float64]:
+        "表示在本体坐标系"
         return self.SO2.T
 
     @property
@@ -133,6 +127,7 @@ class Pose2D:
 
     @property
     def SE2inv(self) -> NDArray[np.float64]:
+        "表示在本体坐标系"
         return np.block([[self.SO2inv, -self.SO2inv @ self.t], [np.zeros(2), 1]])
 
     @property
@@ -182,6 +177,7 @@ def plot_car(x, y, yaw):
     c, s = math.cos(yaw), math.sin(yaw)
     rot = Pose2D(0, 0, -yaw).SO2
     car_outline_x, car_outline_y = [], []
+    VRX, VRY = Settings.Car.VRX, Settings.Car.VRY
     for rx, ry in zip(VRX, VRY):
         converted_xy = np.stack([rx, ry]).T @ rot
         car_outline_x.append(converted_xy[0] + x)
