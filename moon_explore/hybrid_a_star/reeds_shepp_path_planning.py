@@ -14,7 +14,7 @@ from typing import List, Tuple
 import numpy as np
 from numpy.typing import NDArray
 from patterns import path_funcs
-from utils import Pose2D, angle_mod, plot_arrow
+from utils import Pose2D, plot_arrow
 
 
 class RPath:
@@ -125,8 +125,12 @@ def calc_interpolate_dists_list(lengths: List[float], step_size: float) -> List[
     interpolate_dists_list: List[NDArray[np.float64]] = []
     for length in lengths:
         d_dist = step_size if length >= 0.0 else -step_size
-        interp_dists = np.arange(0.0, length, d_dist)
-        interp_dists = np.append(interp_dists, length)
+
+        interp_core = np.arange(0.0, length, d_dist, dtype=np.float64)
+        interp_dists = np.empty(len(interp_core) + 1, dtype=np.float64)
+        interp_dists[:-1] = interp_core
+        interp_dists[-1] = length
+
         interpolate_dists_list.append(interp_dists)
 
     return interpolate_dists_list
@@ -137,35 +141,31 @@ def generate_local_course(
     modes: List[str],
     max_curvature: float,
     step_size: float,
-) -> Tuple[List[float], List[float], List[float], List[int]]:
+) -> Tuple[NDArray[np.float64], NDArray[np.float64], NDArray[np.float64], NDArray[np.int32]]:
     interpolate_dists_list = calc_interpolate_dists_list(lengths, step_size * max_curvature)
+    total_len = sum(len(arr) for arr in interpolate_dists_list)
+    xs = np.empty(total_len, dtype=np.float64)
+    ys = np.empty_like(xs)
+    yaws = np.empty_like(xs)
+    directions = np.empty_like(xs, dtype=np.int32)
 
     origin_x, origin_y, origin_yaw = 0.0, 0.0, 0.0
-
-    xs, ys, yaws, directions = [], [], [], []
-    xs: List[float]
-    ys: List[float]
-    yaws: List[float]
-    directions: List[int]
+    idx = 0
 
     for interp_dists, mode, length in zip(interpolate_dists_list, modes, lengths):
+        n = len(interp_dists)
         x_arr, y_arr, yaw_arr, dir_arr = interpolate_vectorized(
             interp_dists, length, mode, max_curvature, origin_x, origin_y, origin_yaw
         )
-        xs.extend(x_arr)
-        ys.extend(y_arr)
-        yaws.extend(yaw_arr)
-        directions.extend(dir_arr)
-        # 原方法，修改了一下使用 numpy 加速
-        # for dist in interp_dists:
-        #     x, y, yaw, direction = interpolate(dist, length, mode, max_curvature, origin_x, origin_y, origin_yaw)
-        #     xs.append(x)
-        #     ys.append(y)
-        #     yaws.append(yaw)
-        #     directions.append(direction)
-        origin_x = xs[-1]
-        origin_y = ys[-1]
-        origin_yaw = yaws[-1]
+        xs[idx : idx + n] = x_arr
+        ys[idx : idx + n] = y_arr
+        yaws[idx : idx + n] = yaw_arr
+        directions[idx : idx + n] = dir_arr
+
+        origin_x = x_arr[-1]
+        origin_y = y_arr[-1]
+        origin_yaw = yaw_arr[-1]
+        idx += n
 
     return xs, ys, yaws, directions
 
@@ -233,12 +233,18 @@ def calc_paths(
         xs, ys, yaws, directions = generate_local_course(path.lengths, path.ctypes, maxc, step_size)
 
         # 归一化的反向变换
-        path.x = [math.cos(-p0.yaw_rad) * ix + math.sin(-p0.yaw_rad) * iy + p0.x for (ix, iy) in zip(xs, ys)]
-        path.y = [-math.sin(-p0.yaw_rad) * ix + math.cos(-p0.yaw_rad) * iy + p0.y for (ix, iy) in zip(xs, ys)]
-        path.yaw = [angle_mod(yaw + p0.yaw_rad) for yaw in yaws]
-        path.directions = directions
-        path.lengths = [length / maxc for length in path.lengths]
-        path.L = path.L / maxc
+        local_pts = np.vstack([xs, ys, np.ones_like(xs)])  # shape: [3, N]
+        global_pts = p0.SE2 @ local_pts  # shape: [3, N]
+
+        path.x = global_pts[0, :].tolist()
+        path.y = global_pts[1, :].tolist()
+
+        path.yaw = ((yaws + p0.yaw_rad + np.pi) % (2 * np.pi) - np.pi).tolist()
+
+        # 其他字段原样更新
+        path.directions = directions.tolist()
+        path.lengths = [l / maxc for l in path.lengths]
+        path.L /= maxc
 
     return paths
 

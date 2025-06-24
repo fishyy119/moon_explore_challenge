@@ -488,12 +488,16 @@ if __name__ == "__main__":
         current_module = sys.modules[__name__]
 
         # 获取所有用户定义的函数（跳过内置、导入的）
-        for name, obj in inspect.getmembers(current_module):
-            if inspect.isfunction(obj):
-                lp.add_function(obj)  # 普通函数
-            elif inspect.isclass(obj):
-                for meth_name, meth in inspect.getmembers(obj, inspect.isfunction):
-                    lp.add_function(meth)  # 类方法
+        # for name, obj in inspect.getmembers(current_module):
+        #     if inspect.isfunction(obj):
+        #         lp.add_function(obj)  # 普通函数
+        #     elif inspect.isclass(obj):
+        #         for meth_name, meth in inspect.getmembers(obj, inspect.isfunction):
+        #             lp.add_function(meth)  # 类方法
+        # lp.add_function(rs.calc_paths)
+
+        lp.add_module(current_module)
+        # lp.add_module(rs)
 
         lp_wrapper = lp(main)
         lp_wrapper()
@@ -501,7 +505,7 @@ if __name__ == "__main__":
         name = fPath(__file__).stem
         short_name = "_".join(name.split("_")[:2])  # 取前两个单词组合
         profile_filename = f"profile_{short_name}_{timestamp}.txt"
-        with open(profile_filename, "w") as f:
+        with open(profile_filename, "w", encoding="utf-8") as f:
             lp.print_stats(sort=True, stream=f)
     else:
         show_animation = True
