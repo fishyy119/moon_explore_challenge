@@ -147,7 +147,6 @@ class HybridAStarPlanner:
         start: start pose
         goal: goal pose
         """
-
         start_node = HNode(
             *self.map.world_to_map(start.x, start.y, start.yaw_rad),
             True,
@@ -208,71 +207,6 @@ class HybridAStarPlanner:
 
         path = self.get_final_path(closedList, final_path)
         return path
-
-    def calc_cost(self, n: HNode, h_dp: Dict[int, ANode]):
-        ind = self.map.calc_index_2d(n)
-        if ind not in h_dp:
-            return n.cost + 999999999  # d collision cost
-        return n.cost + A.H_COST * h_dp[ind].cost
-
-    def check_car_collision(
-        self,
-        x_list: NDArray[np.float64],
-        y_list: NDArray[np.float64],
-        yaw_list: NDArray[np.float64],
-    ) -> bool:
-        # 路径分辨率小于网格分辨率，减少冗余计算
-        sparse_idx = np.arange(0, len(x_list), 4)
-        x_sparse = x_list[sparse_idx]
-        y_sparse = y_list[sparse_idx]
-        yaw_sparse = yaw_list[sparse_idx]
-
-        cos_yaw = np.cos(yaw_sparse)
-        sin_yaw = np.sin(yaw_sparse)
-        bubble_centers = np.column_stack(
-            (
-                x_sparse + C.BUBBLE_DIST * cos_yaw,
-                y_sparse + C.BUBBLE_DIST * sin_yaw,
-            )
-        )  # (N, 2)
-        all_ids: List[List[int]] = self.obstacle_kd_tree.query_ball_point(
-            bubble_centers,
-            C.BUBBLE_R,
-            p=2,
-            return_sorted=True,  # 让障碍点按距离排序，这样后面矩形判断有更大的概率提前退出
-        )  # 每一个中心点对应一个List[int]
-        valid_mask = [len(ids) > 0 for ids in all_ids]
-        valid_idx = np.flatnonzero(valid_mask)
-
-        for idx in valid_idx:
-            idx: int
-            obs_pts = self.map.kd_tree_points[all_ids[idx], :]
-            if not self.rectangle_check(x_sparse[idx], y_sparse[idx], yaw_sparse[idx], obs_pts):
-                return False
-        return True
-
-    def rectangle_check(self, x: float, y: float, yaw: float, ob_points: NDArray[np.float64]) -> bool:
-        # 传进来的点数组为(N,2)，转换为齐次坐标(N,3)
-        cos_y = math.cos(yaw)
-        sin_y = math.sin(yaw)
-        SE2inv_T = np.array(
-            [
-                [cos_y, sin_y, -cos_y * x - sin_y * y],
-                [-sin_y, cos_y, sin_y * x - cos_y * y],
-            ]
-        ).T
-        # SE2inv: 表示在本体坐标系，SE2最后一行用不到，省略
-        # SE2inv_T: 直接生成转置的版本
-        ob_points_homo = np.empty((ob_points.shape[0], 3), dtype=np.float64)
-        ob_points_homo[:, :2] = ob_points
-        ob_points_homo[:, 2] = 1.0
-
-        # transformed = SE2inv @ ob_points_homo  # 正常应该是这个式子，但是会引入两次转置
-        transformed = ob_points_homo @ SE2inv_T  # (N,2)
-        for rx, ry in transformed:
-            if not (rx > C.LF or rx < -C.LB or ry > C.W / 2.0 or ry < -C.W / 2.0):
-                return False  # collision
-        return True  # no collision
 
     def update_node_with_analytic_expansion(self, current: HNode, goal: HNode):
         # analytic expansion
@@ -335,40 +269,6 @@ class HybridAStarPlanner:
 
         return None
 
-    def calc_rs_path_cost(self, reed_shepp_path: rs.RPath):
-        cost = 0.0
-        for length in reed_shepp_path.lengths:
-            if length >= 0:  # forward
-                cost += length
-            else:  # back
-                cost += abs(length) * A.BACK_PENALTY
-
-        # switch back penalty
-        for i in range(len(reed_shepp_path.lengths) - 1):
-            # switch back
-            if reed_shepp_path.lengths[i] * reed_shepp_path.lengths[i + 1] < 0.0:
-                cost += A.SB_PENALTY
-
-        # steer penalty
-        for course_type in reed_shepp_path.ctypes:
-            if course_type != "S":  # curve
-                cost += A.STEER_PENALTY * abs(C.MAX_STEER)
-
-        # ==steer change penalty
-        # calc steer profile
-        n_ctypes = len(reed_shepp_path.ctypes)
-        u_list = [0.0] * n_ctypes
-        for i in range(n_ctypes):
-            if reed_shepp_path.ctypes[i] == "R":
-                u_list[i] = -C.MAX_STEER
-            elif reed_shepp_path.ctypes[i] == "L":
-                u_list[i] = C.MAX_STEER
-
-        for i in range(len(reed_shepp_path.ctypes) - 1):
-            cost += A.STEER_CHANGE_PENALTY * abs(u_list[i + 1] - u_list[i])
-
-        return cost
-
     def get_neighbors(self, current: HNode) -> Generator[HNode, None, None]:
         for steer, d in self.calc_motion_inputs():
             node = self.calc_next_node(current, steer, d)
@@ -426,6 +326,105 @@ class HybridAStarPlanner:
         )
 
         return node
+
+    def check_car_collision(
+        self,
+        x_list: NDArray[np.float64],
+        y_list: NDArray[np.float64],
+        yaw_list: NDArray[np.float64],
+    ) -> bool:
+        # 路径分辨率小于网格分辨率，减少冗余计算
+        sparse_idx = np.arange(0, len(x_list), 4)
+        x_sparse = x_list[sparse_idx]
+        y_sparse = y_list[sparse_idx]
+        yaw_sparse = yaw_list[sparse_idx]
+
+        cos_yaw = np.cos(yaw_sparse)
+        sin_yaw = np.sin(yaw_sparse)
+        bubble_centers = np.column_stack(
+            (
+                x_sparse + C.BUBBLE_DIST * cos_yaw,
+                y_sparse + C.BUBBLE_DIST * sin_yaw,
+            )
+        )  # (N, 2)
+        all_ids: List[List[int]] = self.obstacle_kd_tree.query_ball_point(
+            bubble_centers,
+            C.BUBBLE_R,
+            p=2,
+            return_sorted=True,  # 让障碍点按距离排序，这样后面矩形判断有更大的概率提前退出
+        )  # 每一个中心点对应一个List[int]
+        valid_mask = [len(ids) > 0 for ids in all_ids]
+        valid_idx = np.flatnonzero(valid_mask)
+
+        for idx in valid_idx:
+            idx: int
+            obs_pts = self.map.kd_tree_points[all_ids[idx], :]
+            if not self.rectangle_check(x_sparse[idx], y_sparse[idx], yaw_sparse[idx], obs_pts):
+                return False
+        return True
+
+    def rectangle_check(self, x: float, y: float, yaw: float, ob_points: NDArray[np.float64]) -> bool:
+        # 传进来的点数组为(N,2)，转换为齐次坐标(N,3)
+        cos_y = math.cos(yaw)
+        sin_y = math.sin(yaw)
+        SE2inv_T = np.array(
+            [
+                [cos_y, sin_y, -cos_y * x - sin_y * y],
+                [-sin_y, cos_y, sin_y * x - cos_y * y],
+            ]
+        ).T
+        # SE2inv: 表示在本体坐标系，SE2最后一行用不到，省略
+        # SE2inv_T: 直接生成转置的版本
+        ob_points_homo = np.empty((ob_points.shape[0], 3), dtype=np.float64)
+        ob_points_homo[:, :2] = ob_points
+        ob_points_homo[:, 2] = 1.0
+
+        # transformed = SE2inv @ ob_points_homo  # 正常应该是这个式子，但是会引入两次转置
+        transformed = ob_points_homo @ SE2inv_T  # (N,2)
+        for rx, ry in transformed:
+            if not (rx > C.LF or rx < -C.LB or ry > C.W / 2.0 or ry < -C.W / 2.0):
+                return False  # collision
+        return True  # no collision
+
+    def calc_rs_path_cost(self, reed_shepp_path: rs.RPath):
+        cost = 0.0
+        for length in reed_shepp_path.lengths:
+            if length >= 0:  # forward
+                cost += length
+            else:  # back
+                cost += abs(length) * A.BACK_PENALTY
+
+        # switch back penalty
+        for i in range(len(reed_shepp_path.lengths) - 1):
+            # switch back
+            if reed_shepp_path.lengths[i] * reed_shepp_path.lengths[i + 1] < 0.0:
+                cost += A.SB_PENALTY
+
+        # steer penalty
+        for course_type in reed_shepp_path.ctypes:
+            if course_type != "S":  # curve
+                cost += A.STEER_PENALTY * abs(C.MAX_STEER)
+
+        # ==steer change penalty
+        # calc steer profile
+        n_ctypes = len(reed_shepp_path.ctypes)
+        u_list = [0.0] * n_ctypes
+        for i in range(n_ctypes):
+            if reed_shepp_path.ctypes[i] == "R":
+                u_list[i] = -C.MAX_STEER
+            elif reed_shepp_path.ctypes[i] == "L":
+                u_list[i] = C.MAX_STEER
+
+        for i in range(len(reed_shepp_path.ctypes) - 1):
+            cost += A.STEER_CHANGE_PENALTY * abs(u_list[i + 1] - u_list[i])
+
+        return cost
+
+    def calc_cost(self, n: HNode, h_dp: Dict[int, ANode]):
+        ind = self.map.calc_index_2d(n)
+        if ind not in h_dp:
+            return n.cost + 999999999  # d collision cost
+        return n.cost + A.H_COST * h_dp[ind].cost
 
     def get_final_path(self, closed: Dict[int, HNode], goal_node: HNode):
         reversed_x, reversed_y, reversed_yaw = (
