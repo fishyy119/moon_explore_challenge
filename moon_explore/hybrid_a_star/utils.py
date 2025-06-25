@@ -1,7 +1,5 @@
 import math
-from abc import ABC
-from pathlib import Path as fPath
-from typing import Callable, List, NamedTuple, Tuple
+from typing import NamedTuple
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -40,15 +38,6 @@ class Settings:
     A = AStar()
 
 
-def angle_mod(angle: float):
-    """
-    Angle modulo operation
-    Default angle modulo range is [-pi, pi)
-    """
-    pi = math.pi
-    return (angle + pi) % (2 * pi) - pi
-
-
 class PoseDiff(NamedTuple):
     dist: float  # 欧氏距离
     yaw_diff_deg: float  # 偏航角差绝对值(角度)
@@ -56,7 +45,7 @@ class PoseDiff(NamedTuple):
 
 
 class Pose2D:
-    def __init__(self, x: float, y: float, yaw: float, deg=False) -> None:
+    def __init__(self, x: float, y: float, yaw: float, deg: bool = False) -> None:
         """
         二维的位姿
 
@@ -76,7 +65,7 @@ class Pose2D:
         self._yaw = (self._yaw + pi) % (2 * pi) - pi
 
     @classmethod
-    def from_pose_msg(cls, x, y, qx, qy, qz, qw) -> "Pose2D":
+    def from_pose_msg(cls, x: float, y: float, qx: float, qy: float, qz: float, qw: float) -> "Pose2D":
         """
         从 ROS Pose 消息创建 Pose2D 实例
         这里不处理 Pose 消息的实例，因此参数是提取后的
@@ -111,24 +100,36 @@ class Pose2D:
     @property
     def SO2(self) -> NDArray[np.float64]:
         "表示在全局坐标系"
-        cos_y = np.cos(self._yaw)
-        sin_y = np.sin(self._yaw)
+        cos_y = math.cos(self._yaw)
+        sin_y = math.sin(self._yaw)
         return np.array([[cos_y, -sin_y], [sin_y, cos_y]])
 
     @property
     def SO2inv(self) -> NDArray[np.float64]:
         "表示在本体坐标系"
-        return self.SO2.T
+        cos_y = math.cos(self._yaw)
+        sin_y = math.sin(self._yaw)
+        return np.array([[cos_y, sin_y], [-sin_y, cos_y]])
 
     @property
     def SE2(self) -> NDArray[np.float64]:
         "表示在全局坐标系"
-        return np.block([[self.SO2, self.t], [np.zeros(2), 1]])
+        cos_y = math.cos(self._yaw)
+        sin_y = math.sin(self._yaw)
+        return np.array([[cos_y, -sin_y, self.x], [sin_y, cos_y, self.y], [0, 0, 1]])
 
     @property
     def SE2inv(self) -> NDArray[np.float64]:
         "表示在本体坐标系"
-        return np.block([[self.SO2inv, -self.SO2inv @ self.t], [np.zeros(2), 1]])
+        cos_y = math.cos(self._yaw)
+        sin_y = math.sin(self._yaw)
+        return np.array(
+            [
+                [cos_y, sin_y, -cos_y * self.x - sin_y * self.y],
+                [-sin_y, cos_y, sin_y * self.x - cos_y * self.y],
+                [0, 0, 1],
+            ]
+        )
 
     @property
     def xy(self) -> NDArray[np.float64]:

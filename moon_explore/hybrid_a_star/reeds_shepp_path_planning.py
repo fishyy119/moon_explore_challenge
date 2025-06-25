@@ -22,9 +22,9 @@ class RPath:
         self.lengths: List[float] = []  # course segment length  (negative value is backward segment)
         self.ctypes: List[str] = []  # course segment type char ("S": straight, "L": left, "R": right)
         self.L: float = 0.0  # Total lengths of the path
-        self.x: List[float] = []  # x positions
-        self.y: List[float] = []  # y positions
-        self.yaw: List[float] = []  # orientations [rad]
+        self.x: NDArray[np.float64] = np.empty(1)  # x positions
+        self.y: NDArray[np.float64] = np.empty(1)  # y positions
+        self.yaw: NDArray[np.float64] = np.empty(1)  # orientations [rad]
         self.directions: List[int] = []  # directions (1:forward, -1:backward)
 
 
@@ -236,10 +236,10 @@ def calc_paths(
         local_pts = np.vstack([xs, ys, np.ones_like(xs)])  # shape: [3, N]
         global_pts = p0.SE2 @ local_pts  # shape: [3, N]
 
-        path.x = global_pts[0, :].tolist()
-        path.y = global_pts[1, :].tolist()
+        path.x = global_pts[0, :]
+        path.y = global_pts[1, :]
 
-        path.yaw = ((yaws + p0.yaw_rad + np.pi) % (2 * np.pi) - np.pi).tolist()
+        path.yaw = (yaws + p0.yaw_rad + np.pi) % (2 * np.pi) - np.pi
 
         # 其他字段原样更新
         path.directions = directions.tolist()

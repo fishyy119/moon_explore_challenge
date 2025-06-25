@@ -13,7 +13,7 @@ from dataclasses import dataclass
 from math import cos, sin, tan
 from pathlib import Path
 from pathlib import Path as fPath
-from typing import Dict, Generator, List, Set, Tuple
+from typing import Dict, Generator, List, Set, Tuple, cast
 
 import numpy as np
 import reeds_shepp_path_planning as rs
@@ -21,7 +21,7 @@ from dynamic_programming_heuristic import ANode, ANodeProto, calc_distance_heuri
 from numpy.typing import NDArray
 from scipy.ndimage import distance_transform_edt
 from scipy.spatial import cKDTree
-from utils import Pose2D, Settings, angle_mod
+from utils import Pose2D, Settings
 
 S = Settings()
 C = S.C
@@ -181,7 +181,7 @@ class HybridAStarPlanner:
                 print("Error: Cannot find path, No open set")
                 return HPath([], [], [], [], 0)
 
-            cost, c_id = heapq.heappop(pq)
+            _, c_id = heapq.heappop(pq)
             if c_id in openList:
                 current = openList.pop(c_id)
                 closedList[c_id] = current
@@ -215,39 +215,67 @@ class HybridAStarPlanner:
             return n.cost + 999999999  # d collision cost
         return n.cost + A.H_COST * h_dp[ind].cost
 
-    def check_car_collision(self, x_list: List[float], y_list: List[float], yaw_list: List[float]):
-        for i_x, i_y, i_yaw in zip(x_list, y_list, yaw_list):
-            cx = i_x + C.BUBBLE_DIST * cos(i_yaw)
-            cy = i_y + C.BUBBLE_DIST * sin(i_yaw)
+    def check_car_collision(
+        self,
+        x_list: NDArray[np.float64],
+        y_list: NDArray[np.float64],
+        yaw_list: NDArray[np.float64],
+    ) -> bool:
+        # 路径分辨率小于网格分辨率，减少冗余计算
+        sparse_idx = np.arange(0, len(x_list), 4)
+        x_sparse = x_list[sparse_idx]
+        y_sparse = y_list[sparse_idx]
+        yaw_sparse = yaw_list[sparse_idx]
 
-            ids = self.obstacle_kd_tree.query_ball_point([cx, cy], C.BUBBLE_R, p=2)
-            near_ob_points = self.map.kd_tree_points[ids, :]
+        cos_yaw = np.cos(yaw_sparse)
+        sin_yaw = np.sin(yaw_sparse)
+        bubble_centers = np.column_stack(
+            (
+                x_sparse + C.BUBBLE_DIST * cos_yaw,
+                y_sparse + C.BUBBLE_DIST * sin_yaw,
+            )
+        )  # (N, 2)
+        all_ids: List[List[int]] = self.obstacle_kd_tree.query_ball_point(
+            bubble_centers,
+            C.BUBBLE_R,
+            p=2,
+            return_sorted=True,  # 让障碍点按距离排序，这样后面矩形判断有更大的概率提前退出
+        )  # 每一个中心点对应一个List[int]
+        valid_mask = [len(ids) > 0 for ids in all_ids]
+        valid_idx = np.flatnonzero(valid_mask)
 
-            if not ids:
-                continue
-
-            # 写着i实际上并不是索引值
-            if not self.rectangle_check(i_x, i_y, i_yaw, near_ob_points):
-                return False  # collision
-
-        return True  # no collision
+        for idx in valid_idx:
+            idx: int
+            obs_pts = self.map.kd_tree_points[all_ids[idx], :]
+            if not self.rectangle_check(x_sparse[idx], y_sparse[idx], yaw_sparse[idx], obs_pts):
+                return False
+        return True
 
     def rectangle_check(self, x: float, y: float, yaw: float, ob_points: NDArray[np.float64]) -> bool:
-        # 传进来的点数组为(N,2)，转换为齐次坐标(3,N)
-        rot = Pose2D(x, y, yaw).SE2inv
-        ob_points = ob_points.T
-        ones = np.ones((1, ob_points.shape[1]))
-        ob_points_homo = np.vstack([ob_points, ones])  # (3, N)
-        transformed = rot @ ob_points_homo  # (3, N)
-        ox, oy = transformed[0], transformed[1]
-        for rx, ry in zip(ox, oy):
+        # 传进来的点数组为(N,2)，转换为齐次坐标(N,3)
+        cos_y = math.cos(yaw)
+        sin_y = math.sin(yaw)
+        SE2inv_T = np.array(
+            [
+                [cos_y, sin_y, -cos_y * x - sin_y * y],
+                [-sin_y, cos_y, sin_y * x - cos_y * y],
+            ]
+        ).T
+        # SE2inv: 表示在本体坐标系，SE2最后一行用不到，省略
+        # SE2inv_T: 直接生成转置的版本
+        ob_points_homo = np.empty((ob_points.shape[0], 3), dtype=np.float64)
+        ob_points_homo[:, :2] = ob_points
+        ob_points_homo[:, 2] = 1.0
 
+        # transformed = SE2inv @ ob_points_homo  # 正常应该是这个式子，但是会引入两次转置
+        transformed = ob_points_homo @ SE2inv_T  # (N,2)
+        for rx, ry in transformed:
             if not (rx > C.LF or rx < -C.LB or ry > C.W / 2.0 or ry < -C.W / 2.0):
                 return False  # collision
-
         return True  # no collision
 
-    def analytic_expansion(self, current: HNode, goal: HNode):
+    def update_node_with_analytic_expansion(self, current: HNode, goal: HNode):
+        # analytic expansion
         start_x = current.x_list[-1]
         start_y = current.y_list[-1]
         start_yaw = current.yaw_list[-1]
@@ -267,30 +295,26 @@ class HybridAStarPlanner:
         if not paths:
             return None
 
-        best_path, best = None, None
-
+        best_path, best_cost = None, None
         for path in paths:
             if self.check_car_collision(path.x, path.y, path.yaw):
                 cost = self.calc_rs_path_cost(path)
-                if not best or best > cost:
-                    best = cost
+                if not best_cost or best_cost > cost:
+                    best_cost = cost
                     best_path = path
 
-        return best_path
+        # update
+        if best_path is not None:
+            best_cost = cast(float, best_cost)
+            f_x = best_path.x[1:]
+            f_y = best_path.y[1:]
+            f_yaw = best_path.yaw[1:]
 
-    def update_node_with_analytic_expansion(self, current: HNode, goal: HNode):
-        path = self.analytic_expansion(current, goal)
-
-        if path:
-            f_x = path.x[1:]
-            f_y = path.y[1:]
-            f_yaw = path.yaw[1:]
-
-            f_cost = current.cost + self.calc_rs_path_cost(path)
+            f_cost = current.cost + best_cost
             f_parent_index = self.map.calc_index(current)
 
             fd: List[bool] = []
-            for d in path.directions[1:]:
+            for d in best_path.directions[1:]:
                 fd.append(d >= 0)
 
             f_steer = 0.0
@@ -299,9 +323,9 @@ class HybridAStarPlanner:
                 current.y_index,
                 current.yaw_index,
                 current.direction,
-                f_x,
-                f_y,
-                f_yaw,
+                f_x.tolist(),
+                f_y.tolist(),
+                f_yaw.tolist(),
                 fd,
                 cost=f_cost,
                 parent_index=f_parent_index,
@@ -345,41 +369,34 @@ class HybridAStarPlanner:
 
         return cost
 
-    def calc_motion_inputs(self) -> Generator[Tuple[float, int], None, None]:
-        for steer in np.concatenate((np.linspace(-C.MAX_STEER, C.MAX_STEER, A.N_STEER), [0.0])):
-            for d in [1, -1]:
-                yield (steer, d)
-
     def get_neighbors(self, current: HNode) -> Generator[HNode, None, None]:
         for steer, d in self.calc_motion_inputs():
             node = self.calc_next_node(current, steer, d)
             if node and self.map.verify_index(node):
                 yield node
 
-    def move(self, x: float, y: float, yaw: float, distance: float, steer: float, L: float = C.WB):
-        x += distance * cos(yaw)
-        y += distance * sin(yaw)
-        yaw = angle_mod(yaw + distance * tan(steer) / L)  # distance/2
+    def calc_motion_inputs(self) -> Generator[Tuple[float, int], None, None]:
+        for steer in np.concatenate((np.linspace(-C.MAX_STEER, C.MAX_STEER, A.N_STEER), [0.0])):
+            for d in [1, -1]:
+                yield (steer, d)
 
-        return x, y, yaw
-
-    def calc_next_node(self, current: HNode, steer: float, direction: int):
-        x, y, yaw = current.x_list[-1], current.y_list[-1], current.yaw_list[-1]
-
+    def calc_next_node(self, current: HNode, steer: float, direction: int) -> None | HNode:
         arc_l = A.XY_GRID_RESOLUTION * 1.5
-        x_list, y_list, yaw_list, direction_list = [], [], [], []
-        x_list: List[float]
-        y_list: List[float]
-        yaw_list: List[float]
-        direction_list: List[bool]
-        for _ in np.arange(0, arc_l, A.MOTION_RESOLUTION):
-            x, y, yaw = self.move(x, y, yaw, A.MOTION_RESOLUTION * direction, steer)
-            x_list.append(x)
-            y_list.append(y)
-            yaw_list.append(yaw)
-            direction_list.append(direction == 1)
+        distance = A.MOTION_RESOLUTION * direction
+        steps = int(np.ceil(arc_l / A.MOTION_RESOLUTION))
+        L = C.WB
+        i = np.arange(0, steps + 1)  # shape=(N,)
+        delta_yaw = distance * tan(steer) / L  # scalar
 
-        if not self.check_car_collision(x_list, y_list, yaw_list):
+        yaw_array = (current.yaw_list[-1] + delta_yaw * i + np.pi) % (2 * np.pi) - np.pi
+        dx = distance * np.cos(yaw_array[:-1])
+        dy = distance * np.sin(yaw_array[:-1])  # 只是先更新yaw还是先更新xy的区别，此处暂时与原版本保持一致
+
+        x_array = current.x_list[-1] + np.cumsum(dx)  # shape=(N,)
+        y_array = current.y_list[-1] + np.cumsum(dy)  # shape=(N,)
+        direction_array = np.full_like(x_array, direction == 1, dtype=np.bool_)
+
+        if not self.check_car_collision(x_array, y_array, yaw_array[1:]):
             return None
 
         d = direction == 1
@@ -397,12 +414,12 @@ class HybridAStarPlanner:
         cost = current.cost + added_cost + arc_l
 
         node = HNode(
-            *self.map.world_to_map(x, y, yaw),
+            *self.map.world_to_map(x_array[-1], y_array[-1], yaw_array[-1]),
             d,
-            x_list,
-            y_list,
-            yaw_list,
-            direction_list,
+            x_array.tolist(),
+            y_array.tolist(),
+            yaw_array[1:].tolist(),
+            direction_array.tolist(),
             parent_index=self.map.calc_index(current),
             cost=cost,
             steer=steer,
@@ -453,6 +470,7 @@ def main():
     # Set Initial parameters
     start = Pose2D(40.0, 10.0, 90.0, deg=True)
     goal = Pose2D(45.0, 32, 90.0, deg=True)
+    # goal = Pose2D(40.0, 12.0, yaw=90, deg=True)
 
     print("start : ", start)
     print("goal : ", goal)
@@ -472,9 +490,13 @@ def main():
     print(__file__ + " done!!")
 
 
+def test_main():
+    for _ in range(5):
+        main()
+
+
 if __name__ == "__main__":
     import datetime
-    import inspect
     import sys
     from pathlib import Path as fPath
 
@@ -496,10 +518,22 @@ if __name__ == "__main__":
         #             lp.add_function(meth)  # 类方法
         # lp.add_function(rs.calc_paths)
 
-        lp.add_module(current_module)
+        # lp.add_module(current_module)
+        lp.add_function(HybridAStarPlanner.planning)
+        lp.add_function(HybridAStarPlanner.calc_cost)
+        lp.add_function(HybridAStarPlanner.check_car_collision)
+        lp.add_function(HybridAStarPlanner.rectangle_check)
+        lp.add_function(HybridAStarPlanner.update_node_with_analytic_expansion)
+        lp.add_function(HybridAStarPlanner.calc_rs_path_cost)
+        lp.add_function(HybridAStarPlanner.calc_motion_inputs)
+        lp.add_function(HybridAStarPlanner.get_neighbors)
+        lp.add_function(HybridAStarPlanner.calc_next_node)
+        lp.add_function(HybridAStarPlanner.get_final_path)
+        lp.add_function(rs.calc_paths)
+        lp.add_function(calc_distance_heuristic)
         # lp.add_module(rs)
 
-        lp_wrapper = lp(main)
+        lp_wrapper = lp(test_main)
         lp_wrapper()
         timestamp = datetime.datetime.now().strftime("%H%M%S")
         name = fPath(__file__).stem
