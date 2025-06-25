@@ -10,16 +10,13 @@ See Wikipedia article (https://en.wikipedia.org/wiki/A*_search_algorithm)
 
 import heapq
 import math
-from dataclasses import dataclass
-from typing import Dict, List, Protocol, Set, Tuple
+from typing import Callable, Dict, List, NamedTuple, Protocol, Tuple
 
 import numpy as np
 from numpy.typing import NDArray
-from utils import Settings
 
 
-@dataclass(slots=True)
-class ANode:
+class ANode(NamedTuple):
     x_index: int
     y_index: int
     cost: float
@@ -27,8 +24,10 @@ class ANode:
 
 
 class ANodeProto(Protocol):
-    x_index: int
-    y_index: int
+    @property
+    def x_index(self) -> int: ...
+    @property
+    def y_index(self) -> int: ...
 
 
 class AMapProto(Protocol):
@@ -53,14 +52,25 @@ def calc_distance_heuristic(map: AMapProto, gx: float, gy: float):
         gx (float): 终点坐标 [m]
         gy (float): 终点坐标 [m]
     """
-    goal_node = ANode(*map.world_to_map_2d(gx, gy), 0.0, -1)
-    motions = get_motion_model()
+    # dx, dy, cost
+    sqr2 = math.sqrt(2)
+    motions: List[Tuple[int, int, float]] = [
+        (1, 0, 1),
+        (0, 1, 1),
+        (-1, 0, 1),
+        (0, -1, 1),
+        (-1, -1, sqr2),
+        (-1, 1, sqr2),
+        (1, -1, sqr2),
+        (1, 1, sqr2),
+    ]
 
-    open_set, closed_set = dict(), dict()
-    open_set: Dict[int, ANode]
-    closed_set: Dict[int, ANode]
-    open_set[map.calc_index_2d(goal_node)] = goal_node
-    priority_queue: List[Tuple[float, int]] = [(0, map.calc_index_2d(goal_node))]
+    goal_node = ANode(*map.world_to_map_2d(gx, gy), 0.0, -1)
+    open_set: Dict[int, ANode] = dict()
+    closed_set: Dict[int, ANode] = dict()
+    goal_idx = map.calc_index_2d(goal_node)
+    open_set[goal_idx] = goal_node
+    priority_queue: List[Tuple[float, int]] = [(0, goal_idx)]
 
     min_x = map.min_x_index
     max_x = map.max_x_index
@@ -68,6 +78,7 @@ def calc_distance_heuristic(map: AMapProto, gx: float, gy: float):
     max_y = map.max_y_index
     xw = map.x_width
     ob_map = map.euclidean_dilated_ob_map
+    pq_push = heapq.heappush
 
     while True:
         if not priority_queue:
@@ -80,50 +91,23 @@ def calc_distance_heuristic(map: AMapProto, gx: float, gy: float):
         else:
             continue
 
-        for m in motions:
-            nx = current.x_index + m[0]
-            ny = current.y_index + m[1]
-            new_cost = current.cost + m[2]
-
-            if not (min_x <= nx < max_x and min_y <= ny < max_y):
-                continue
-
-            if ob_map[ny, nx]:
+        get_cost = current.cost
+        get_x = current.x_index
+        get_y = current.y_index
+        for dx, dy, dc in motions:
+            nx = get_x + dx
+            ny = get_y + dy
+            if (not (min_x <= nx < max_x and min_y <= ny < max_y)) or ob_map[ny, nx]:
                 continue
 
             # 将 calc_index_2d 内联展开
             n_id = (ny - min_y) * xw + (nx - min_x)
-
             if n_id in closed_set:
                 continue
 
-            new_nid: Dict[int, Tuple[int, int, float]] = {}
-            if n_id not in open_set:
-                new_nid[n_id] = (nx, ny, new_cost)
-            else:
-                if open_set[n_id].cost >= new_cost:
-                    # This path is the best until now. record it!
-                    new_nid[n_id] = (nx, ny, new_cost)
-
-            for nid, args in new_nid.items():
-                node = ANode(*args, c_id)
-                open_set[nid] = node
-                heapq.heappush(priority_queue, (node.cost, nid))
+            new_cost = get_cost + dc
+            if (n_id not in open_set) or (open_set[n_id].cost >= new_cost):
+                open_set[n_id] = ANode(nx, ny, new_cost, c_id)
+                pq_push(priority_queue, (new_cost, n_id))
 
     return closed_set
-
-
-def get_motion_model() -> List[Tuple[int, int, float]]:
-    # dx, dy, cost
-    motion: List[Tuple[int, int, float]] = [
-        (1, 0, 1),
-        (0, 1, 1),
-        (-1, 0, 1),
-        (0, -1, 1),
-        (-1, -1, math.sqrt(2)),
-        (-1, 1, math.sqrt(2)),
-        (1, -1, math.sqrt(2)),
-        (1, 1, math.sqrt(2)),
-    ]
-
-    return motion
