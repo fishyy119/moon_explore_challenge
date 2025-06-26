@@ -13,7 +13,7 @@ from typing import List, Tuple
 
 import numpy as np
 from numpy.typing import NDArray
-from patterns import path_funcs
+from moon_explore.hybrid_a_star.rs_patterns import path_funcs
 from utils import Pose2D, plot_arrow
 
 

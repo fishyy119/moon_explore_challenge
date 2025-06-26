@@ -1,7 +1,7 @@
 import conftest  # Add root path to sys.path
 import numpy as np
 
-from moon_explore.hybrid_a_star import reeds_shepp_path_planning as m
+from moon_explore.hybrid_a_star import rs_planning as m
 
 
 def check_edge_condition(px, py, pyaw, start_x, start_y, start_yaw, end_x, end_y, end_yaw):
