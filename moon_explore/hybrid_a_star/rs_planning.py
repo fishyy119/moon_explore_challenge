@@ -2,9 +2,9 @@
 
 Reeds Shepp path planner sample code
 
-author Atsushi Sakai(@Atsushi_twi)
-co-author Videh Patel(@videh25) : Added the missing RS paths
-and me
+author: Atsushi Sakai(@Atsushi_twi)
+co-author: Videh Patel(@videh25) : Added the missing RS paths
+and: me
 
 """
 
@@ -13,7 +13,7 @@ from typing import List, Tuple
 
 import numpy as np
 from numpy.typing import NDArray
-from moon_explore.hybrid_a_star.rs_patterns import path_funcs
+from rs_patterns import path_funcs
 from utils import Pose2D, plot_arrow
 
 

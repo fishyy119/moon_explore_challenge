@@ -3,7 +3,7 @@
 Hybrid A* path planning
 
 author: Zheng Zh (@Zhengzh)
-and me
+and: me
 
 """
 
@@ -16,7 +16,7 @@ from pathlib import Path as fPath
 from typing import Dict, Generator, List, Set, Tuple, cast
 
 import numpy as np
-from dynamic_programming_heuristic import ANode, ANodeProto, calc_distance_heuristic
+from dynamic_programming_heuristic import ANodeProto, calc_distance_heuristic
 from numpy.typing import NDArray
 from scipy.ndimage import distance_transform_edt
 from scipy.spatial import cKDTree
@@ -114,14 +114,11 @@ class HMap:
         )
 
     def calc_index_2d(self, node: ANodeProto) -> int:
-        "计算扁平化的索引，只考虑xy"
+        "计算扁平化的索引，只考虑xy，A*启发项需要用到"
         return (node.y_index - self.min_y_index) * self.x_width + (node.x_index - self.min_x_index)
 
     def world_to_map(self, x: float, y: float, yaw: float) -> Tuple[int, int, int]:
         return round(x / self.resolution), round(y / self.resolution), round(yaw / self.yaw_resolution)
-
-    def world_to_map_2d(self, x: float, y: float) -> Tuple[int, int]:
-        return round(x / self.resolution), round(y / self.resolution)
 
     def build_kdtree(self) -> cKDTree:
         """
