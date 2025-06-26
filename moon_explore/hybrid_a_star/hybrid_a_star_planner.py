@@ -16,16 +16,13 @@ from pathlib import Path as fPath
 from typing import Dict, Generator, List, Set, Tuple, cast
 
 import numpy as np
-import reeds_shepp_path_planning as rs
 from dynamic_programming_heuristic import ANode, ANodeProto, calc_distance_heuristic
 from numpy.typing import NDArray
 from scipy.ndimage import distance_transform_edt
 from scipy.spatial import cKDTree
-from utils import Pose2D, Settings
+from utils import A, C, Pose2D, S
 
-S = Settings()
-C = S.C
-A = S.A
+import moon_explore.hybrid_a_star.rs_planning as rs
 
 
 @dataclass
@@ -40,7 +37,7 @@ class HNode:
     directions: List[bool]
     steer: float = 0.0
     parent_index: int | None = None
-    cost: float = 0  # TODO: 注意一下goal的cost
+    cost: float = 0
 
     def __repr__(self):
         return f"Node({self.x_index},{self.y_index},{self.yaw_index})"
@@ -69,9 +66,9 @@ class HMap:
     def __init__(
         self,
         ob_map: NDArray[np.bool_],
-        resolution: float = Settings.AStar.XY_GRID_RESOLUTION,
+        resolution: float = A.XY_GRID_RESOLUTION,
         yaw_resolution: float = A.YAW_GRID_RESOLUTION,
-        rr: float = Settings.Car.BUBBLE_R,
+        rr: float = C.BUBBLE_R,
     ) -> None:
         """
         Args:
@@ -95,7 +92,7 @@ class HMap:
 
         # 根据半径膨胀
         distance_map: NDArray[np.float64] = distance_transform_edt(~ob_map)  # type: ignore
-        self.euclidean_dilated_ob_map = distance_map <= rr / resolution * 1.2  # TODO: 安全系数
+        self.euclidean_dilated_ob_map = distance_map <= rr / resolution * A.SAFETY_MARGIN_RATIO
 
     @classmethod
     def from_file(cls, file: str | fPath):
@@ -141,6 +138,9 @@ class HybridAStarPlanner:
         self.map = map
         self.obstacle_kd_tree = map.build_kdtree()
         self.kd_tree_points = self.map.kd_tree_points
+        self.hrs_table: NDArray[np.float64] = np.load(
+            Path(__file__).resolve().parent / f"rs_table_{A.MAP_MAX_SIZE}x{A.MAP_MAX_SIZE}.npy"
+        )
 
     def planning(self, start: Pose2D, goal: Pose2D):
         """
@@ -168,14 +168,22 @@ class HybridAStarPlanner:
         openList: Dict[int, HNode] = {}
         closedList: Dict[int, HNode] = {}
 
-        h_dp = calc_distance_heuristic(self.map, goal_node.x_list[-1], goal_node.y_list[-1])
+        self.hstar_dp = calc_distance_heuristic(self.map, goal_node.x_list[-1], goal_node.y_list[-1])
 
         pq: List[Tuple[float, int]] = []
         openList[self.map.calc_index(start_node)] = start_node
-        heapq.heappush(pq, (self.calc_cost(start_node, h_dp), self.map.calc_index(start_node)))
+        heapq.heappush(
+            pq,
+            (
+                self.calc_cost(start_node, self.calc_heuristic(start_node, goal_node)),
+                self.map.calc_index(start_node),
+            ),
+        )
         final_path = None
+        rs_cnt = 0
 
         while True:
+            rs_cnt += 1
             if not openList:
                 print("Error: Cannot find path, No open set")
                 return HPath([], [], [], [], 0)
@@ -187,11 +195,13 @@ class HybridAStarPlanner:
             else:
                 continue
 
-            final_path = self.update_node_with_analytic_expansion(current, goal_node)
-
-            if final_path is not None:
-                print("path found")
-                break
+            h_total = self.calc_heuristic(current, goal_node)
+            if rs_cnt >= self.calc_rs_interval(h_total):
+                rs_cnt = 0
+                final_path = self.update_node_with_analytic_expansion(current, goal_node)
+                if final_path is not None:
+                    print("path found")
+                    break
 
             new_push_neighbor: Set[int] = set()
             for neighbor in self.get_neighbors(current):
@@ -203,13 +213,13 @@ class HybridAStarPlanner:
                     openList[neighbor_index] = neighbor
 
             for neighbor_index in new_push_neighbor:
-                heapq.heappush(pq, (self.calc_cost(openList[neighbor_index], h_dp), neighbor_index))
+                heapq.heappush(pq, (self.calc_cost(openList[neighbor_index], h_total), neighbor_index))
 
         path = self.get_final_path(closedList, final_path)
         return path
 
     def update_node_with_analytic_expansion(self, current: HNode, goal: HNode):
-        # analytic expansion
+        # analytic expansion(解析扩张)
         start_x = current.x_list[-1]
         start_y = current.y_list[-1]
         start_yaw = current.yaw_list[-1]
@@ -229,13 +239,18 @@ class HybridAStarPlanner:
         if not paths:
             return None
 
-        best_path, best_cost = None, None
-        for path in paths:
+        path_costs = [self.calc_rs_path_cost(path) for path in paths]
+        good_path_ids = np.argsort(path_costs)
+        best_path, best_cost = None, path_costs[good_path_ids[0]]
+        for idx in good_path_ids:
+            idx: int
+            if path_costs[idx] > best_cost * A.RS_COST_REJECTION_RATIO:
+                break  # 提前退出验证
+            path = paths[idx]
             if self.check_car_collision(path.x, path.y, path.yaw):
-                cost = self.calc_rs_path_cost(path)
-                if not best_cost or best_cost > cost:
-                    best_cost = cost
-                    best_path = path
+                best_cost = path_costs[idx]
+                best_path = path
+                break
 
         # update
         if best_path is not None:
@@ -349,18 +364,22 @@ class HybridAStarPlanner:
         )  # (N, 2)
         all_ids: List[List[int]] = self.obstacle_kd_tree.query_ball_point(
             bubble_centers,
-            C.BUBBLE_R,
+            C.BUBBLE_R * A.SAFETY_MARGIN_RATIO,  # 在原始障碍物地图上，扩张机器人半径查询，基本等价于膨胀障碍物
             p=2,
             return_sorted=True,  # 让障碍点按距离排序，这样后面矩形判断有更大的概率提前退出
         )  # 每一个中心点对应一个List[int]
-        valid_mask = [len(ids) > 0 for ids in all_ids]
-        valid_idx = np.flatnonzero(valid_mask)
+        if any(len(ids) > 0 for ids in all_ids):
+            return False
 
-        for idx in valid_idx:
-            idx: int
-            obs_pts = self.map.kd_tree_points[all_ids[idx], :]
-            if not self.rectangle_check(x_sparse[idx], y_sparse[idx], yaw_sparse[idx], obs_pts):
-                return False
+        # 原实现中额外进行矩形检测，但是感觉性价比不高，
+        # 使用圆形包络（kdtree直接查询）虽然有一些保守，但是感觉还可以接受。
+        # valid_mask = [len(ids) > 0 for ids in all_ids]
+        # valid_idx = np.flatnonzero(valid_mask)
+        # for idx in valid_idx:
+        #     idx: int
+        #     obs_pts = self.map.kd_tree_points[all_ids[idx], :]
+        #     if not self.rectangle_check(x_sparse[idx], y_sparse[idx], yaw_sparse[idx], obs_pts):
+        #         return False
         return True
 
     def rectangle_check(self, x: float, y: float, yaw: float, ob_points: NDArray[np.float64]) -> bool:
@@ -386,7 +405,61 @@ class HybridAStarPlanner:
                 return False  # collision
         return True  # no collision
 
-    def calc_rs_path_cost(self, reed_shepp_path: rs.RPath):
+    def calc_heuristic(self, n: HNode, goal: HNode) -> float:
+        # * atar启发式
+        ind = self.map.calc_index_2d(n)
+        h_star = (
+            999999999 if ind not in self.hstar_dp else self.hstar_dp[ind].cost * A.XY_GRID_RESOLUTION
+        )  # 这里有量纲变换
+        h_rs = 0
+
+        # * rs启发式：离线打表
+        x = goal.x_list[0] - n.x_list[0]
+        y = goal.y_list[0] - n.y_list[0]
+        yaw = goal.yaw_list[0] - n.yaw_list[0]
+
+        if x < 0:
+            x = -x
+            yaw = -yaw
+        if y < 0:
+            y = -y
+            yaw = -yaw
+
+        x_idx = round(x / A.XY_GRID_RESOLUTION)
+        y_idx = round(y / A.XY_GRID_RESOLUTION)
+        yaw_idx = round((yaw + math.pi) / A.YAW_GRID_RESOLUTION)
+
+        # 越界检查
+        x_size, y_size, yaw_size = self.hrs_table.shape
+        if 0 <= x_idx < x_size and 0 <= y_idx < y_size and 0 <= yaw_idx < yaw_size:
+            h_rs = self.hrs_table[x_idx, y_idx, yaw_idx]
+            if math.isinf(h_rs):
+                h_rs = 999999
+        else:
+            h_rs = 0.0  # 表里没有
+
+        # * rs启发式：另一种在线计算方案
+        # path = rs.reeds_shepp_path_planning(
+        #     n.x_list[0],
+        #     n.y_list[0],
+        #     n.yaw_list[0],
+        #     goal.x_list[0],
+        #     goal.y_list[0],
+        #     goal.yaw_list[0],
+        #     maxc=math.tan(C.MAX_STEER) / C.WB,
+        #     step_size=A.MOTION_RESOLUTION,
+        # )
+        # h_rs = 999999999 if path is None else path.L
+
+        # ? 对于障碍物较多的环境，貌似h_rs没有什么机会大于h_star，不过打表查询对性能影响很小
+        if h_rs > h_star:
+            pass
+
+        # *两者取最大
+        return max(h_star, h_rs)
+
+    @staticmethod
+    def calc_rs_path_cost(reed_shepp_path: rs.RPath):
         cost = 0.0
         for length in reed_shepp_path.lengths:
             if length >= 0:  # forward
@@ -420,13 +493,23 @@ class HybridAStarPlanner:
 
         return cost
 
-    def calc_cost(self, n: HNode, h_dp: Dict[int, ANode]):
-        ind = self.map.calc_index_2d(n)
-        if ind not in h_dp:
-            return n.cost + 999999999  # d collision cost
-        return n.cost + A.H_COST * h_dp[ind].cost
+    @staticmethod
+    def calc_rs_interval(h: float) -> int:
+        """根据启发项 h 计算 RS 路径的扩展间隔 N(h)，分段线性下降策略。"""
+        if h >= A.H_HIGH:
+            return A.N_MAX
+        elif h <= A.H_LOW:
+            return A.N_MIN
+        else:
+            ratio = (h - A.H_LOW) / (A.H_HIGH - A.H_LOW)
+            return math.ceil(A.N_MIN + (A.N_MAX - A.N_MIN) * ratio)
 
-    def get_final_path(self, closed: Dict[int, HNode], goal_node: HNode):
+    @staticmethod
+    def calc_cost(n: HNode, h: float) -> float:
+        return n.cost + A.H_WEIGHT * h  # 启发项乘个权重
+
+    @staticmethod
+    def get_final_path(closed: Dict[int, HNode], goal_node: HNode):
         reversed_x, reversed_y, reversed_yaw = (
             list(reversed(goal_node.x_list)),
             list(reversed(goal_node.y_list)),
@@ -469,7 +552,7 @@ def main():
     # Set Initial parameters
     start = Pose2D(40.0, 10.0, 90.0, deg=True)
     goal = Pose2D(45.0, 32, 90.0, deg=True)
-    # goal = Pose2D(40.0, 12.0, yaw=90, deg=True)
+    # goal = Pose2D(40.0, 12.0, yaw=0, deg=True)
 
     print("start : ", start)
     print("goal : ", goal)
@@ -501,27 +584,16 @@ if __name__ == "__main__":
 
     from line_profiler import LineProfiler
 
-    use_profile = True
-    # use_profile = False
-    if use_profile:
+    if S.Debug.use_profile:
         show_animation = False
         lp = LineProfiler()
         current_module = sys.modules[__name__]
 
-        # 获取所有用户定义的函数（跳过内置、导入的）
-        # for name, obj in inspect.getmembers(current_module):
-        #     if inspect.isfunction(obj):
-        #         lp.add_function(obj)  # 普通函数
-        #     elif inspect.isclass(obj):
-        #         for meth_name, meth in inspect.getmembers(obj, inspect.isfunction):
-        #             lp.add_function(meth)  # 类方法
-        # lp.add_function(rs.calc_paths)
-
         # lp.add_module(current_module)
         lp.add_function(HybridAStarPlanner.planning)
-        lp.add_function(HybridAStarPlanner.calc_cost)
+        # lp.add_function(HybridAStarPlanner.calc_cost)
         lp.add_function(HybridAStarPlanner.check_car_collision)
-        lp.add_function(HybridAStarPlanner.rectangle_check)
+        # lp.add_function(HybridAStarPlanner.rectangle_check)
         lp.add_function(HybridAStarPlanner.update_node_with_analytic_expansion)
         lp.add_function(HybridAStarPlanner.calc_rs_path_cost)
         lp.add_function(HybridAStarPlanner.calc_motion_inputs)

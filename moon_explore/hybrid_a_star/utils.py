@@ -10,32 +10,68 @@ from scipy.spatial.transform import Rotation
 class Settings:
     class Car:
         WB = 0.35  # rear to front wheel
-        W = 0.3  # width of car
-        LF = 0.2  # distance from rear to vehicle front end
-        LB = 0.2  # distance from rear to vehicle back end
+        W = 0.4  # width of car
+        LF = 0.4  # distance from rear to vehicle front end
+        LB = 0.4  # distance from rear to vehicle back end
         MAX_STEER = 0.6  # [rad] maximum steering angle
 
         BUBBLE_DIST = (LF - LB) / 2.0  # distance from rear to center of vehicle.
         BUBBLE_R = np.hypot((LF + LB) / 2.0, W / 2.0)  # bubble radius
 
-        # vehicle rectangle vertices
+        # vehicle rectangle verticesMAP_
         VRX = [LF, LF, -LB, -LB, LF]
         VRY = [W / 2, -W / 2, -W / 2, W / 2, W / 2]
 
     class AStar:
-        XY_GRID_RESOLUTION = 0.1  # [m]
-        YAW_GRID_RESOLUTION = np.deg2rad(15.0)  # [rad]
-        MOTION_RESOLUTION = 0.01  # [m] path interpolate resolution
-        N_STEER = 20  # number of steer command
+        # ==============================================================================
+        # 地图的相关参数
+        # ==============================================================================
+        MAP_MAX_SIZE = 7  # 地图尺寸 [m]
+        XY_GRID_RESOLUTION = 0.1  # 栅格分辨率 [m]
+        YAW_GRID_RESOLUTION = np.deg2rad(15.0)  # 节点偏航角分辨率 [rad]
+        MOTION_RESOLUTION = 0.01  # 路径积分的分辨率 [m]
+        N_STEER = 20  # 转向指令的生成数量
 
+        # ==============================================================================
+        # 损失计算的相关参数
+        # ==============================================================================
         SB_PENALTY = 100.0  # 换向惩罚（非系数）
         BACK_PENALTY = 5.0  # 倒车惩罚系数
         STEER_CHANGE_PENALTY = 5.0  # 转向变化惩罚系数
         STEER_PENALTY = 1.0  # 转向惩罚系数
-        H_COST = 5.0  # Heuristic cost(系数)
+        H_WEIGHT = 5.0  # 启发项权重，用于在cost基础上附加启发项时
+
+        # ==============================================================================
+        # 解析扩张相关
+        # ==============================================================================
+        # * 启发项物理含义：预期到达的距离，单位 [m]
+        H_HIGH = 5.0  # 此处规定两个启发项阈值，频率在他们之间时线性递减
+        H_LOW = 0.5
+
+        # * N为解析扩张频率，此处规定上下界
+        N_MAX = math.ceil((H_HIGH - H_LOW) / 10 / XY_GRID_RESOLUTION)
+        N_MIN = 1
+
+        # * 在验证解析扩张得到的路径是否碰撞时，先拒绝掉代价过高的路径提高验证效率
+        # 某一次循环中的cost列表 [20.00284761554539, 179.13205454838817, 180.59115325247083, ...]
+        RS_COST_REJECTION_RATIO = 2  # 相对于最低代价的比例，超出的路径会被直接拒绝不进行验证
+
+        # ==============================================================================
+        # 其他参数
+        # ==============================================================================
+        SAFETY_MARGIN_RATIO = 1.2  # 对机器人半径扩张增加安全性
+
+    class Debug:
+        use_profile = True
+        use_profile = False
 
     C = Car()
     A = AStar()
+
+
+S = Settings()
+C = S.C
+A = S.A
 
 
 class PoseDiff(NamedTuple):
