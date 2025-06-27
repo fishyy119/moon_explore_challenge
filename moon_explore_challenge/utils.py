@@ -9,16 +9,17 @@ from scipy.spatial.transform import Rotation
 
 class Settings:
     class Car:
-        WB = 0.35  # rear to front wheel
-        W = 0.4  # width of car
-        LF = 0.4  # distance from rear to vehicle front end
-        LB = 0.4  # distance from rear to vehicle back end
-        MAX_STEER = 0.6  # [rad] maximum steering angle
+        WB = 0.35  # 轴距（rear to front wheel）
+        W = 0.4  # 车轮廓宽（width of car）
+        LF = 0.6  # 后轴到前端（distance from rear to vehicle front end）
+        LB = 0.2  # 后轴到后端（distance from rear to vehicle back end）
+        MAX_STEER = 0.5  # 前轮最大转向角 [rad] maximum steering angle
 
         BUBBLE_DIST = (LF - LB) / 2.0  # distance from rear to center of vehicle.
         BUBBLE_R = np.hypot((LF + LB) / 2.0, W / 2.0)  # bubble radius
 
-        # vehicle rectangle verticesMAP_
+        # 这个只是画图用的，主函数里没用到
+        # 此处能发现路径的参考点是车辆后轴中心
         VRX = [LF, LF, -LB, -LB, LF]
         VRY = [W / 2, -W / 2, -W / 2, W / 2, W / 2]
 

@@ -6,8 +6,6 @@ import math
 from functools import wraps
 from typing import Callable, Dict, List, NamedTuple, Tuple
 
-import numpy as np
-
 
 class PathFunctionResult(NamedTuple):
     success: bool
@@ -49,7 +47,9 @@ def polar(x, y):
 
 def mod2pi(x: float) -> float:
     # Be consistent with fmod in cplusplus here.
-    v = np.mod(x, np.copysign(2.0 * math.pi, x))
+    # v = np.mod(x, np.copysign(2.0 * math.pi, x))
+    mod = math.copysign(2.0 * math.pi, x)
+    v = math.fmod(x, mod)
     if v < -math.pi:
         v += 2.0 * math.pi
     else:

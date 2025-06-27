@@ -238,7 +238,6 @@ def calc_paths(
 
         path.x = global_pts[0, :]
         path.y = global_pts[1, :]
-
         path.yaw = (yaws + p0.yaw_rad + np.pi) % (2 * np.pi) - np.pi
 
         # 其他字段原样更新
@@ -271,7 +270,7 @@ def reeds_shepp_path_planning(
 
 def main():
 
-    print("Reeds Shepp path planner sample start!!")
+    # print("Reeds Shepp path planner sample start!!")
 
     start_x = -1.0  # [m]
     start_y = -4.0  # [m]
@@ -281,8 +280,8 @@ def main():
     end_y = 5.0  # [m]
     end_yaw = np.deg2rad(25.0)  # [rad]
 
-    curvature = 0.1
-    step_size = 0.05
+    curvature = 0.1  # 最大曲率
+    step_size = 0.05  # 路径采样的步长 [m]
 
     result_path = reeds_shepp_path_planning(start_x, start_y, start_yaw, end_x, end_y, end_yaw, curvature, step_size)
 
@@ -304,26 +303,32 @@ def main():
         plt.show()
 
 
+def test_main():
+    for _ in range(2000):
+        main()
+
+
 if __name__ == "__main__":
     import datetime
-    import inspect
-    import sys
     from pathlib import Path as fPath
 
     import matplotlib.pyplot as plt
     from line_profiler import LineProfiler
 
     use_profile = True
-    use_profile = False
+    # use_profile = False
     if use_profile:
         show_animation = False
         lp = LineProfiler()
-        current_module = sys.modules[__name__]
 
-        # 获取所有用户定义的函数（跳过内置、导入的）
-        for name, obj in inspect.getmembers(current_module, inspect.isfunction):
-            lp.add_function(obj)
-        lp_wrapper = lp(main)
+        lp.add_function(calc_paths)
+        lp.add_function(generate_path)
+        for func in path_funcs.values():
+            lp.add_function(func.__wrapped__)  # type: ignore
+        # lp.add_function(rs_patterns.polar)
+        # lp.add_function(rs_patterns.mod2pi)
+
+        lp_wrapper = lp(test_main)
         lp_wrapper()
         timestamp = datetime.datetime.now().strftime("%H%M%S")
         name = fPath(__file__).stem

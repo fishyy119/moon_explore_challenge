@@ -10,19 +10,19 @@ and: me
 import heapq
 import math
 from dataclasses import dataclass
-from math import cos, sin, tan
-from pathlib import Path
+from math import cos, pi, sin, tan
 from pathlib import Path as fPath
 from typing import Dict, Generator, List, Set, Tuple, cast
 
 import numpy as np
+import rs_planning as rs
 from dynamic_programming_heuristic import ANodeProto, calc_distance_heuristic
 from numpy.typing import NDArray
 from scipy.ndimage import distance_transform_edt
 from scipy.spatial import cKDTree
 from utils import A, C, Pose2D, S
 
-import moon_explore.hybrid_a_star.rs_planning as rs
+from moon_explore_challenge import RESOURCE_DIR
 
 
 @dataclass
@@ -56,7 +56,7 @@ class HPath:
 
 class HMap:
     """
-    关于地图的索引方式：
+    * 关于地图的索引方式：
 
     使用numpy二维数组存储地图，考虑一个正常的矩阵写法，
     右上角[0,0]定为原点，x轴指向右方，y轴指向下方，
@@ -86,8 +86,8 @@ class HMap:
         self.max_x_index, self.max_y_index = self.obstacle_map.shape
         self.min_x_index, self.min_y_index = 0, 0
         self.x_width, self.y_width = self.obstacle_map.shape
-        self.min_yaw_index = round(-math.pi / yaw_resolution) - 1
-        self.max_yaw_index = round(math.pi / yaw_resolution)
+        self.min_yaw_index = round(-pi / yaw_resolution) - 1
+        self.max_yaw_index = round(pi / yaw_resolution)
         self.yaw_w = round(self.max_yaw_index - self.min_yaw_index)
 
         # 根据半径膨胀
@@ -114,16 +114,14 @@ class HMap:
         )
 
     def calc_index_2d(self, node: ANodeProto) -> int:
-        "计算扁平化的索引，只考虑xy，A*启发项需要用到"
+        "计算扁平化的索引，只考虑xy，A*启发项需要用这个索引"
         return (node.y_index - self.min_y_index) * self.x_width + (node.x_index - self.min_x_index)
 
     def world_to_map(self, x: float, y: float, yaw: float) -> Tuple[int, int, int]:
         return round(x / self.resolution), round(y / self.resolution), round(yaw / self.yaw_resolution)
 
     def build_kdtree(self) -> cKDTree:
-        """
-        从 obstacle_map 中提取障碍物坐标，并构建 KDTree
-        """
+        """从 obstacle_map 中提取障碍物坐标，并构建 KDTree"""
         obstacle_indices = np.argwhere(self.obstacle_map)  # shape (N, 2)
         self.kd_tree_points = obstacle_indices * self.resolution  # 将地图索引转换为世界坐标（米）
         self.kd_tree_points = self.kd_tree_points[:, [1, 0]]  # 地图的索引是yx顺序的，进行交换
@@ -135,14 +133,12 @@ class HybridAStarPlanner:
         self.map = map
         self.obstacle_kd_tree = map.build_kdtree()
         self.kd_tree_points = self.map.kd_tree_points
-        self.hrs_table: NDArray[np.float64] = np.load(
-            Path(__file__).resolve().parent / f"rs_table_{A.MAP_MAX_SIZE}x{A.MAP_MAX_SIZE}.npy"
-        )
+        self.hrs_table: NDArray[np.float64] = np.load(RESOURCE_DIR / f"rs_table_{A.MAP_MAX_SIZE}x{A.MAP_MAX_SIZE}.npy")
 
     def planning(self, start: Pose2D, goal: Pose2D):
         """
-        start: start pose
-        goal: goal pose
+        start: 起点位姿
+        goal: 终点位姿
         """
         start_node = HNode(
             *self.map.world_to_map(start.x, start.y, start.yaw_rad),
@@ -166,7 +162,6 @@ class HybridAStarPlanner:
         closedList: Dict[int, HNode] = {}
 
         self.hstar_dp = calc_distance_heuristic(self.map, goal_node.x_list[-1], goal_node.y_list[-1])
-
         pq: List[Tuple[float, int]] = []
         openList[self.map.calc_index(start_node)] = start_node
         heapq.heappush(
@@ -225,7 +220,7 @@ class HybridAStarPlanner:
         goal_y = goal.y_list[-1]
         goal_yaw = goal.yaw_list[-1]
 
-        max_curvature = math.tan(C.MAX_STEER) / C.WB
+        max_curvature = tan(C.MAX_STEER) / C.WB
         paths: List[rs.RPath] = rs.calc_paths(
             Pose2D(start_x, start_y, start_yaw),
             Pose2D(goal_x, goal_y, goal_yaw),
@@ -313,17 +308,11 @@ class HybridAStarPlanner:
 
         d = direction == 1
         added_cost: float = 0.0
-
         if d != current.direction:
-            added_cost += A.SB_PENALTY
-
-        # steer penalty
-        added_cost += A.STEER_PENALTY * abs(steer)
-
-        # steer change penalty
-        added_cost += A.STEER_CHANGE_PENALTY * abs(current.steer - steer)
-
-        cost = current.cost + added_cost + arc_l
+            added_cost += A.SB_PENALTY  # 换档惩罚
+        added_cost += A.STEER_PENALTY * abs(steer)  # 转向惩罚
+        added_cost += A.STEER_CHANGE_PENALTY * abs(current.steer - steer)  # 转向改变惩罚
+        cost = current.cost + added_cost + arc_l  # 额外损失 + 增加路径长度
 
         node = HNode(
             *self.map.world_to_map(x_array[-1], y_array[-1], yaw_array[-1]),
@@ -381,8 +370,8 @@ class HybridAStarPlanner:
 
     def rectangle_check(self, x: float, y: float, yaw: float, ob_points: NDArray[np.float64]) -> bool:
         # 传进来的点数组为(N,2)，转换为齐次坐标(N,3)
-        cos_y = math.cos(yaw)
-        sin_y = math.sin(yaw)
+        cos_y = cos(yaw)
+        sin_y = sin(yaw)
         SE2inv_T = np.array(
             [
                 [cos_y, sin_y, -cos_y * x - sin_y * y],
@@ -414,7 +403,6 @@ class HybridAStarPlanner:
         x = goal.x_list[0] - n.x_list[0]
         y = goal.y_list[0] - n.y_list[0]
         yaw = goal.yaw_list[0] - n.yaw_list[0]
-
         if x < 0:
             x = -x
             yaw = -yaw
@@ -424,7 +412,7 @@ class HybridAStarPlanner:
 
         x_idx = round(x / A.XY_GRID_RESOLUTION)
         y_idx = round(y / A.XY_GRID_RESOLUTION)
-        yaw_idx = round((yaw + math.pi) / A.YAW_GRID_RESOLUTION)
+        yaw_idx = round((yaw + pi) / A.YAW_GRID_RESOLUTION)
 
         # 越界检查
         x_size, y_size, yaw_size = self.hrs_table.shape
@@ -522,44 +510,35 @@ class HybridAStarPlanner:
             reversed_y.extend(list(reversed(n.y_list)))
             reversed_yaw.extend(list(reversed(n.yaw_list)))
             direction.extend(list(reversed(n.directions)))
-
             nid = n.parent_index
 
         reversed_x = list(reversed(reversed_x))
         reversed_y = list(reversed(reversed_y))
         reversed_yaw = list(reversed(reversed_yaw))
         direction = list(reversed(direction))
-
-        # adjust first direction
-        direction[0] = direction[1]
+        direction[0] = direction[1]  # adjust first direction
 
         path = HPath(reversed_x, reversed_y, reversed_yaw, direction, final_cost)
-
         return path
 
 
 def main():
-    import matplotlib.pyplot as plt
-
-    from plot.plot_utils import MAP_PASSABLE, plot_binary_map, plt_tight_show
-
     print("Start Hybrid A* planning")
-    map_npy = Path(__file__).resolve().parents[2] / "resource/map_passable.npy"
 
     # Set Initial parameters
     start = Pose2D(40.0, 10.0, 90.0, deg=True)
-    goal = Pose2D(45.0, 32, 90.0, deg=True)
+    goal = Pose2D(45.0, 32, 180.0, deg=True)
     # goal = Pose2D(40.0, 12.0, yaw=0, deg=True)
 
     print("start : ", start)
     print("goal : ", goal)
 
-    map = HMap.from_file(map_npy)
+    map = HMap(MAP_PASSABLE)
     planner = HybridAStarPlanner(map)
     path = planner.planning(start, goal)
 
-    x = [x * 10 for x in path.x_list]
-    y = [x * 10 for x in path.y_list]
+    x = [x / A.XY_GRID_RESOLUTION for x in path.x_list]
+    y = [x / A.XY_GRID_RESOLUTION for x in path.y_list]
     if show_animation:
         fig, ax = plt.subplots()
         ax.plot(x, y)
@@ -579,7 +558,10 @@ if __name__ == "__main__":
     import sys
     from pathlib import Path as fPath
 
+    import matplotlib.pyplot as plt
     from line_profiler import LineProfiler
+
+    from plot.plot_utils import MAP_PASSABLE, plot_binary_map, plt_tight_show
 
     if S.Debug.use_profile:
         show_animation = False

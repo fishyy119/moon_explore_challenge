@@ -39,10 +39,11 @@ import math
 from pathlib import Path
 
 import numpy as np
-from rs_planning import reeds_shepp_path_planning
-from utils import A, C, S
 
-npy_file = Path(__file__).resolve().parent / f"rs_table_{A.MAP_MAX_SIZE}x{A.MAP_MAX_SIZE}.npy"
+from moon_explore_challenge.rs_planning import reeds_shepp_path_planning
+from moon_explore_challenge.utils import A, C, S
+
+npy_file = Path(__file__).resolve().parent / f"resource/rs_table_{A.MAP_MAX_SIZE}x{A.MAP_MAX_SIZE}.npy"
 
 
 def precompute_rs_table():
