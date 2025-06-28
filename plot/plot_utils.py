@@ -22,8 +22,8 @@ from scipy.ndimage import distance_transform_edt
 from scipy.spatial.transform import Rotation as R
 
 ColorType = Union[Tuple[float, float, float, float], Tuple[float, float, float], str]
-
 import sys
+from typing import TYPE_CHECKING
 
 sys.path.append(str(Path(__file__).parent.parent))
 
@@ -196,29 +196,58 @@ def plt_flat_axes(axes: List[List[Axes]]) -> List[Axes]:
 #         label.set_fontname("Times New Roman")
 
 
-# def plot_path_time_map(csv: RecordBase, ax: Axes):
-#     x = csv.x_map.to_numpy()
-#     y = csv.y_map.to_numpy()
-#     t = csv.time.to_numpy()
+if TYPE_CHECKING:
+    from moon_explore_challenge.hybrid_a_star_planner import HPath
 
-#     # 构造连续线段 [(x0,y0)-(x1,y1), (x1,y1)-(x2,y2), ...]
-#     points = np.array([x, y]).T.reshape(-1, 1, 2)
-#     segments = np.concatenate([points[:-1], points[1:]], axis=1)
 
-#     # 创建 LineCollection，用时间做颜色映射
-#     lc = LineCollection(segments, cmap="viridis", norm=Normalize(t.min(), t.max()))  # type: ignore
-#     lc.set_array(t)
-#     lc.set_linewidth(2)
-#     ax.add_collection(lc)
+def plot_path_curvature_map(path: "HPath", ax: Axes):
+    x = np.array(path.x_list)
+    y = np.array(path.y_list)
+    yaw = np.array(path.yaw_list)
 
-#     divider = make_axes_locatable(ax)
-#     cax = divider.append_axes("right", size="5%", pad=0.05)
+    dyaw = np.diff(np.unwrap(yaw))
+    dx = np.diff(x)
+    dy = np.diff(y)
+    ds = np.hypot(dx, dy)
+    ds[ds < 1e-5] = 1e6  # 防止除以0
 
-#     # 创建 colorbar 并设置样式
-#     cb = ax.figure.colorbar(lc, cax=cax, orientation="vertical")  # type: ignore
-#     cb.ax.set_title("时间 (s)", fontsize=10.5, pad=5)
-#     for label in cb.ax.get_yticklabels():
-#         label.set_fontname("Times New Roman")
+    curvature = np.fabs(dyaw / ds)
+
+    # 构造连续线段 [(x0,y0)-(x1,y1), (x1,y1)-(x2,y2), ...]
+    points = np.array([x, y]).T.reshape(-1, 1, 2) * 10
+    segments = np.concatenate([points[:-1], points[1:]], axis=1)
+
+    # 创建 LineCollection，用时间做颜色映射
+    lc = LineCollection(segments, cmap="viridis", norm=Normalize(curvature.min(), curvature.max()))  # type: ignore
+    lc.set_array(curvature)
+    lc.set_linewidth(2)
+    ax.add_collection(lc)
+
+    divider = make_axes_locatable(ax)
+    cax = divider.append_axes("right", size="5%", pad=0.05)
+
+    # 创建 colorbar 并设置样式
+    cb = ax.figure.colorbar(lc, cax=cax, orientation="vertical")  # type: ignore
+    cb.ax.set_title("曲率", fontsize=10.5, pad=5)
+    for label in cb.ax.get_yticklabels():
+        label.set_fontname("Times New Roman")
+
+    # ====== 检测异常曲率点并绘制 ======
+    mean_c = curvature.mean()
+    std_c = curvature.std()
+    threshold = mean_c + 3 * std_c
+
+    abnormal_indices = np.where(curvature > threshold)[0]
+    abnormal_x = (x[:-1] + x[1:]) / 2
+    abnormal_y = (y[:-1] + y[1:]) / 2
+
+    ax.scatter(
+        abnormal_x[abnormal_indices] * 10,
+        abnormal_y[abnormal_indices] * 10,
+        color="red",
+        s=20,
+        marker="o",
+    )
 
 
 def plot_binary_map(map: NDArray[np.bool_], ax: Axes, visible_map: NDArray[np.bool_] | None = None, alpha: float = 1):

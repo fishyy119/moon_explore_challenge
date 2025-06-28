@@ -10,7 +10,7 @@ and: me
 import heapq
 import math
 from dataclasses import dataclass
-from math import cos, pi, sin, tan
+from math import atan2, cos, pi, sin, tan
 from pathlib import Path as fPath
 from typing import Dict, Generator, List, Set, Tuple, cast
 
@@ -81,6 +81,8 @@ class HMap:
         self.resolution = resolution
         self.yaw_resolution = yaw_resolution
         self.rr = rr
+        self.edf_map: NDArray[np.float64] = distance_transform_edt(~ob_map) * resolution  # [m] # type: ignore
+        self.euclidean_dilated_ob_map = self.edf_map <= rr * A.SAFETY_MARGIN_RATIO  # 根据半径膨胀
 
         # 地图参数
         self.max_x_index, self.max_y_index = self.obstacle_map.shape
@@ -89,10 +91,6 @@ class HMap:
         self.min_yaw_index = round(-pi / yaw_resolution) - 1
         self.max_yaw_index = round(pi / yaw_resolution)
         self.yaw_w = round(self.max_yaw_index - self.min_yaw_index)
-
-        # 根据半径膨胀
-        distance_map: NDArray[np.float64] = distance_transform_edt(~ob_map)  # type: ignore
-        self.euclidean_dilated_ob_map = distance_map <= rr / resolution * A.SAFETY_MARGIN_RATIO
 
     @classmethod
     def from_file(cls, file: str | fPath):
@@ -120,6 +118,9 @@ class HMap:
     def world_to_map(self, x: float, y: float, yaw: float) -> Tuple[int, int, int]:
         return round(x / self.resolution), round(y / self.resolution), round(yaw / self.yaw_resolution)
 
+    def world_to_map_2d(self, x: float, y: float) -> Tuple[int, int]:
+        return round(x / self.resolution), round(y / self.resolution)
+
     def build_kdtree(self) -> cKDTree:
         """从 obstacle_map 中提取障碍物坐标，并构建 KDTree"""
         obstacle_indices = np.argwhere(self.obstacle_map)  # shape (N, 2)
@@ -133,7 +134,13 @@ class HybridAStarPlanner:
         self.map = map
         self.obstacle_kd_tree = map.build_kdtree()
         self.kd_tree_points = self.map.kd_tree_points
-        self.hrs_table: NDArray[np.float64] = np.load(RESOURCE_DIR / f"rs_table_{A.MAP_MAX_SIZE}x{A.MAP_MAX_SIZE}.npy")
+        self.hrs_table: NDArray[np.float64] | None
+        table_file = RESOURCE_DIR / f"rs_table_{A.MAP_MAX_SIZE}x{A.MAP_MAX_SIZE}.npy"
+        try:
+            self.hrs_table = np.load(table_file)
+        except FileNotFoundError:
+            self.hrs_table = None
+            print(f"RS 启发式表{str(table_file)}未找到，将禁用 RS 启发")
 
     def planning(self, start: Pose2D, goal: Pose2D):
         """
@@ -208,6 +215,8 @@ class HybridAStarPlanner:
                 heapq.heappush(pq, (self.calc_cost(openList[neighbor_index], h_total), neighbor_index))
 
         path = self.get_final_path(closedList, final_path)
+        # s_path = self.smooth_path(path)
+        # return s_path
         return path
 
     def update_node_with_analytic_expansion(self, current: HNode, goal: HNode):
@@ -400,28 +409,28 @@ class HybridAStarPlanner:
         h_rs = 0
 
         # * rs启发式：离线打表
-        x = goal.x_list[0] - n.x_list[0]
-        y = goal.y_list[0] - n.y_list[0]
-        yaw = goal.yaw_list[0] - n.yaw_list[0]
-        if x < 0:
-            x = -x
-            yaw = -yaw
-        if y < 0:
-            y = -y
-            yaw = -yaw
+        h_rs = 0.0  # 表里没有
+        if self.hrs_table is not None:
+            x = goal.x_list[0] - n.x_list[0]
+            y = goal.y_list[0] - n.y_list[0]
+            yaw = goal.yaw_list[0] - n.yaw_list[0]
+            if x < 0:
+                x = -x
+                yaw = -yaw
+            if y < 0:
+                y = -y
+                yaw = -yaw
 
-        x_idx = round(x / A.XY_GRID_RESOLUTION)
-        y_idx = round(y / A.XY_GRID_RESOLUTION)
-        yaw_idx = round((yaw + pi) / A.YAW_GRID_RESOLUTION)
+            x_idx = round(x / A.XY_GRID_RESOLUTION)
+            y_idx = round(y / A.XY_GRID_RESOLUTION)
+            yaw_idx = round((yaw + pi) / A.YAW_GRID_RESOLUTION)
 
-        # 越界检查
-        x_size, y_size, yaw_size = self.hrs_table.shape
-        if 0 <= x_idx < x_size and 0 <= y_idx < y_size and 0 <= yaw_idx < yaw_size:
-            h_rs = self.hrs_table[x_idx, y_idx, yaw_idx]
-            if math.isinf(h_rs):
-                h_rs = 999999
-        else:
-            h_rs = 0.0  # 表里没有
+            # 越界检查
+            x_size, y_size, yaw_size = self.hrs_table.shape
+            if 0 <= x_idx < x_size and 0 <= y_idx < y_size and 0 <= yaw_idx < yaw_size:
+                h_rs = self.hrs_table[x_idx, y_idx, yaw_idx]
+                if math.isinf(h_rs):
+                    h_rs = 999999
 
         # * rs启发式：另一种在线计算方案
         # path = rs.reeds_shepp_path_planning(
@@ -521,6 +530,61 @@ class HybridAStarPlanner:
         path = HPath(reversed_x, reversed_y, reversed_yaw, direction, final_cost)
         return path
 
+    def smooth_path(self, path: HPath) -> HPath:
+        x = np.array(path.x_list)
+        y = np.array(path.y_list)
+        orig_x = np.copy(x)
+        orig_y = np.copy(y)
+
+        distance_map = self.map.edf_map
+        H, W = distance_map.shape
+
+        for _ in range(A.ITERATIONS):
+            for i in range(1, len(x) - 1):  # skip endpoints
+                # Smoothness term
+                dx_s = x[i - 1] - 2 * x[i] + x[i + 1]
+                dy_s = y[i - 1] - 2 * y[i] + y[i + 1]
+
+                # Fidelity term
+                dx_f = orig_x[i] - x[i]
+                dy_f = orig_y[i] - y[i]
+
+                # Obstacle term
+                mx, my = self.map.world_to_map_2d(x[i], y[i])
+                if 0 <= mx < W and 0 <= my < H:
+                    d = distance_map[my, mx]
+                    grad_obs = np.exp(-d / A.OBSTACLE_SIGMA) / (A.OBSTACLE_SIGMA + 1e-6)
+                    # approximate gradient direction away from obstacle
+                    gx = (distance_map[my, min(mx + 1, W - 1)] - distance_map[my, max(mx - 1, 0)]) / 2
+                    gy = (distance_map[min(my + 1, H - 1), mx] - distance_map[max(my - 1, 0), mx]) / 2
+                    dx_o = -grad_obs * gx
+                    dy_o = -grad_obs * gy
+                else:
+                    dx_o = dy_o = 0.0
+
+                # Total gradient
+                dx = A.WEIGHT_SMOOTH * dx_s + A.WEIGHT_FIDELITY * dx_f + A.WEIGHT_OBSTACLE * dx_o
+                dy = A.WEIGHT_SMOOTH * dy_s + A.WEIGHT_FIDELITY * dy_f + A.WEIGHT_OBSTACLE * dy_o
+
+                x[i] += A.LEARN_RATE * dx
+                y[i] += A.LEARN_RATE * dy
+
+        # Recalculate yaw and direction
+        new_yaw = []
+        new_dir = []
+        for i in range(len(x) - 1):
+            dx = x[i + 1] - x[i]
+            dy = y[i + 1] - y[i]
+            new_yaw.append(atan2(dy, dx))
+            new_dir.append(True)  # assume forward; refine if needed
+        new_yaw.append(new_yaw[-1])
+        new_dir.append(new_dir[-1])
+
+        # Compute new cost (approximate length)
+        cost = np.sum(np.hypot(np.diff(x), np.diff(y)))
+
+        return HPath(x.tolist(), y.tolist(), new_yaw, new_dir, cost)
+
 
 def main():
     print("Start Hybrid A* planning")
@@ -532,16 +596,18 @@ def main():
 
     print("start : ", start)
     print("goal : ", goal)
+    print("max curvature : ", tan(C.MAX_STEER) / C.WB)
 
     map = HMap(MAP_PASSABLE)
     planner = HybridAStarPlanner(map)
     path = planner.planning(start, goal)
 
     x = [x / A.XY_GRID_RESOLUTION for x in path.x_list]
-    y = [x / A.XY_GRID_RESOLUTION for x in path.y_list]
+    y = [y / A.XY_GRID_RESOLUTION for y in path.y_list]
     if show_animation:
         fig, ax = plt.subplots()
-        ax.plot(x, y)
+        # ax.plot(x, y)
+        plot_path_curvature_map(path, ax)
         plot_binary_map(MAP_PASSABLE, ax)
         plt_tight_show()
 
@@ -561,7 +627,12 @@ if __name__ == "__main__":
     import matplotlib.pyplot as plt
     from line_profiler import LineProfiler
 
-    from plot.plot_utils import MAP_PASSABLE, plot_binary_map, plt_tight_show
+    from plot.plot_utils import (
+        MAP_PASSABLE,
+        plot_binary_map,
+        plot_path_curvature_map,
+        plt_tight_show,
+    )
 
     if S.Debug.use_profile:
         show_animation = False
