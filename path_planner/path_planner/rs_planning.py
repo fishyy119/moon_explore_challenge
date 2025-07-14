@@ -14,7 +14,7 @@ from typing import List, Tuple
 import numpy as np
 from numpy.typing import NDArray
 from rs_patterns import path_funcs
-from utils import Pose2D, plot_arrow
+from utils import Pose2D
 
 
 class RPath:
@@ -314,6 +314,7 @@ if __name__ == "__main__":
 
     import matplotlib.pyplot as plt
     from line_profiler import LineProfiler
+    from plot.plot_utils import plot_arrow
 
     use_profile = True
     # use_profile = False

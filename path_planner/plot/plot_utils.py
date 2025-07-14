@@ -1,3 +1,4 @@
+import math
 import platform
 from abc import ABC, abstractmethod
 from pathlib import Path
@@ -315,3 +316,14 @@ def plot_slope_map(slope: NDArray, ax: Axes, passable_threshold: List[float] = [
 
     ax_add_legend(ax, legend_handles=legend_patches, alpha=0.8)
     ax_remove_axis(ax)
+
+
+def plot_arrow(x, y, yaw, length=1.0, width=0.5, fc="r", ec="k"):
+    if isinstance(x, list):
+        for ix, iy, iyaw in zip(x, y, yaw):
+            plot_arrow(ix, iy, iyaw)
+    else:
+        plt.arrow(
+            x, y, length * math.cos(yaw), length * math.sin(yaw), fc=fc, ec=ec, head_width=width, head_length=width
+        )
+        plt.plot(x, y)

@@ -1,7 +1,6 @@
 import math
 from typing import NamedTuple
 
-import matplotlib.pyplot as plt
 import numpy as np
 from numpy.typing import NDArray
 from scipy.spatial.transform import Rotation
@@ -207,31 +206,3 @@ class Pose2D:
 
     def __repr__(self):
         return f"{self.x}, {self.y}, {self.yaw_deg360}"
-
-
-def plot_arrow(x, y, yaw, length=1.0, width=0.5, fc="r", ec="k"):
-    if isinstance(x, list):
-        for ix, iy, iyaw in zip(x, y, yaw):
-            plot_arrow(ix, iy, iyaw)
-    else:
-        plt.arrow(
-            x, y, length * math.cos(yaw), length * math.sin(yaw), fc=fc, ec=ec, head_width=width, head_length=width
-        )
-        plt.plot(x, y)
-
-
-def plot_car(x, y, yaw):
-    car_color = "-k"
-    c, s = math.cos(yaw), math.sin(yaw)
-    rot = Pose2D(0, 0, -yaw).SO2
-    car_outline_x, car_outline_y = [], []
-    VRX, VRY = Settings.Car.VRX, Settings.Car.VRY
-    for rx, ry in zip(VRX, VRY):
-        converted_xy = np.stack([rx, ry]).T @ rot
-        car_outline_x.append(converted_xy[0] + x)
-        car_outline_y.append(converted_xy[1] + y)
-
-    arrow_x, arrow_y, arrow_yaw = c * 1.5 + x, s * 1.5 + y, yaw
-    plot_arrow(arrow_x, arrow_y, arrow_yaw)
-
-    plt.plot(car_outline_x, car_outline_y, car_color)

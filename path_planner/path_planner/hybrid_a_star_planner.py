@@ -18,11 +18,10 @@ import numpy as np
 import rs_planning as rs
 from dynamic_programming_heuristic import ANodeProto, calc_distance_heuristic
 from numpy.typing import NDArray
+from path_planner import RESOURCE_DIR
 from scipy.ndimage import distance_transform_edt
 from scipy.spatial import cKDTree
 from utils import A, C, Pose2D, S
-
-from moon_explore_challenge import RESOURCE_DIR
 
 
 @dataclass
@@ -626,7 +625,6 @@ if __name__ == "__main__":
 
     import matplotlib.pyplot as plt
     from line_profiler import LineProfiler
-
     from plot.plot_utils import (
         MAP_PASSABLE,
         plot_binary_map,
