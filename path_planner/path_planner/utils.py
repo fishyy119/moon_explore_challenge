@@ -1,4 +1,5 @@
 import math
+from functools import cached_property
 from typing import NamedTuple
 
 import numpy as np
@@ -74,6 +75,7 @@ class Settings:
     class Debug:
         use_profile = True
         use_profile = False
+        test_sim_origin = False
 
     C = Car()
     A = AStar()
@@ -101,8 +103,8 @@ class Pose2D:
             yaw (float): 弧度制偏航角
             deg (bool): 如果为True，则使用角度制定义偏航角，默认为False
         """
-        self.x = x
-        self.y = y
+        self._x = x
+        self._y = y
         if deg:
             self._yaw = math.radians(yaw)
         else:
@@ -139,64 +141,68 @@ class Pose2D:
         yaw_diff = min(diff_abs, 360 - diff_abs)
         return PoseDiff(dist=distance, yaw_diff_deg=yaw_diff, yaw_diff_rad=yaw_diff * math.pi / 180)
 
-    @property
+    @cached_property
     def t(self) -> NDArray[np.float64]:
         return np.array([[self.x], [self.y]])
 
-    @property
+    @cached_property
     def SO2(self) -> NDArray[np.float64]:
         "表示在全局坐标系"
         cos_y = math.cos(self._yaw)
         sin_y = math.sin(self._yaw)
         return np.array([[cos_y, -sin_y], [sin_y, cos_y]])
 
-    @property
+    @cached_property
     def SO2inv(self) -> NDArray[np.float64]:
         "表示在本体坐标系"
         cos_y = math.cos(self._yaw)
         sin_y = math.sin(self._yaw)
         return np.array([[cos_y, sin_y], [-sin_y, cos_y]])
 
-    @property
+    @cached_property
     def SE2(self) -> NDArray[np.float64]:
         "表示在全局坐标系"
-        cos_y = math.cos(self._yaw)
-        sin_y = math.sin(self._yaw)
-        return np.array([[cos_y, -sin_y, self.x], [sin_y, cos_y, self.y], [0, 0, 1]])
+        c = math.cos(self._yaw)
+        s = math.sin(self._yaw)
+        return np.array([[c, -s, self.x], [s, c, self.y], [0, 0, 1]])
 
-    @property
+    @cached_property
     def SE2inv(self) -> NDArray[np.float64]:
         "表示在本体坐标系"
-        cos_y = math.cos(self._yaw)
-        sin_y = math.sin(self._yaw)
+        c = math.cos(self._yaw)
+        s = math.sin(self._yaw)
         return np.array(
             [
-                [cos_y, sin_y, -cos_y * self.x - sin_y * self.y],
-                [-sin_y, cos_y, sin_y * self.x - cos_y * self.y],
+                [c, s, -c * self.x - s * self.y],
+                [-s, c, s * self.x - c * self.y],
                 [0, 0, 1],
             ]
         )
 
     @property
+    def x(self):
+        return self._x
+
+    @property
+    def y(self):
+        return self._y
+
+    @cached_property
     def xy(self) -> NDArray[np.float64]:
         return np.array([self.x, self.y])
 
     @property
-    def yaw_rad(self, deg=False) -> float:
+    def yaw_rad(self) -> float:
         "偏航角，弧度制"
         return self._yaw
 
-    @yaw_rad.setter
-    def yaw_rad(self, value: float) -> None:
-        self._yaw = value
-
-    @property
+    @cached_property
     def yaw_deg180(self) -> float:
         """返回 [-180, 180) 的角度值"""
         deg = math.degrees(self._yaw) % 360
         return (deg + 180) % 360 - 180
 
-    @property
+    @cached_property
     def yaw_deg360(self) -> float:
         """返回 [0, 360) 的角度值"""
         return math.degrees(self._yaw) % 360

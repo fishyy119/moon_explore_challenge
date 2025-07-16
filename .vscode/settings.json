@@ -2,8 +2,11 @@
   "python.analysis.autoSearchPaths": true,
   "python.analysis.useLibraryCodeForTypes": true,
   "terminal.integrated.env.windows": {
-    "PYTHONPATH": "${workspaceFolder}"
+    "PYTHONPATH": "${workspaceFolder}/path_planner"
   },
+  "python.analysis.extraPaths": [
+    "${workspaceFolder}/path_planner"
+  ],
   "terminal.integrated.env.linux": { // 为了其他地方的脚本也能导入根目录的包
     "PYTHONPATH": "${workspaceFolder}"
   },

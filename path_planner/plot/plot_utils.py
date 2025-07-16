@@ -10,7 +10,6 @@ import matplotlib.patches as patches
 import matplotlib.patheffects as pe
 import matplotlib.pyplot as plt
 import numpy as np
-import pandas as pd
 from matplotlib import cm
 from matplotlib.axes import Axes
 from matplotlib.collections import LineCollection
@@ -18,7 +17,6 @@ from matplotlib.colors import Normalize
 from matplotlib.patches import Patch
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 from numpy.typing import NDArray
-from pandas import DataFrame, Series
 from scipy.ndimage import distance_transform_edt
 from scipy.spatial.transform import Rotation as R
 

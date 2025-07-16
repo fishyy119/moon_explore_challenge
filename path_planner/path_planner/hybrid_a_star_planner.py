@@ -18,10 +18,11 @@ import numpy as np
 import rs_planning as rs
 from dynamic_programming_heuristic import ANodeProto, calc_distance_heuristic
 from numpy.typing import NDArray
-from path_planner import RESOURCE_DIR
 from scipy.ndimage import distance_transform_edt
 from scipy.spatial import cKDTree
 from utils import A, C, Pose2D, S
+
+from path_planner import RESOURCE_DIR
 
 
 @dataclass
@@ -55,11 +56,15 @@ class HPath:
 
 class HMap:
     """
-    * 关于地图的索引方式：
-
+    * 内部地图栅格坐标系：
     使用numpy二维数组存储地图，考虑一个正常的矩阵写法，
-    右上角[0,0]定为原点，x轴指向右方，y轴指向下方，
+    右上角[0,0]定为原点，x轴指向右方，y轴指向下方 (ROS的地图消息好像也是这个坐标系)，
     因此在提取某一坐标处地图信息时，需要使用map[y,x]的形式进行索引
+    存在两套数值体系，int的栅格索引和float的连续坐标，原点相同
+
+    * 与系统整体的地图坐标系的转换：
+    类内部处理使用前述栅格坐标系，因此在在接收其他模块输入输出时，需要额外进行SE2转换
+    TODO: 需要确认这个xy颠倒ROS信息是怎么表示
     """
 
     def __init__(
@@ -68,6 +73,7 @@ class HMap:
         resolution: float = A.XY_GRID_RESOLUTION,
         yaw_resolution: float = A.YAW_GRID_RESOLUTION,
         rr: float = C.BUBBLE_R,
+        origin: Pose2D = Pose2D(0, 0, 0),
     ) -> None:
         """
         Args:
@@ -75,6 +81,7 @@ class HMap:
             resolution (float, optional): 地图分辨率 [m]
             yaw_resolution (float): 偏航角的分辨率 [rad]
             rr (float, optional): 巡视器安全班级 [m]
+            origin (float, optional): 接收到的地图中00栅格相对于地图坐标系的位姿
         """
         self.obstacle_map = ob_map
         self.resolution = resolution
@@ -90,6 +97,12 @@ class HMap:
         self.min_yaw_index = round(-pi / yaw_resolution) - 1
         self.max_yaw_index = round(pi / yaw_resolution)
         self.yaw_w = round(self.max_yaw_index - self.min_yaw_index)
+
+        # 输入输出要加这个转换
+        self.origin_pose = origin
+        self.SE2 = origin.SE2  # 内部 -> 外部
+        self.SE2inv = origin.SE2inv  # 外部 -> 内部
+        self.map_yaw = origin.yaw_rad  # 内部 -> 外部（加的话）
 
     @classmethod
     def from_file(cls, file: str | fPath):
@@ -141,28 +154,57 @@ class HybridAStarPlanner:
             self.hrs_table = None
             print(f"RS 启发式表{str(table_file)}未找到，将禁用 RS 启发")
 
-    def planning(self, start: Pose2D, goal: Pose2D):
+    def planning(self, start: Pose2D, goal: Pose2D) -> Tuple[None | HPath, str]:
         """
+        输入都在外部地图坐标系表示，需要转换
         start: 起点位姿
         goal: 终点位姿
         """
+        out = np.array([[start.x, goal.x], [start.y, goal.y], [1, 1]])
+        inn = self.map.SE2inv @ out
+        sx = inn[0, 0]
+        sy = inn[1, 0]
+        syaw = (self.map.map_yaw + start.yaw_rad + pi) % (2 * pi) - pi
+        gx = inn[0, 1]
+        gy = inn[1, 1]
+        gyaw = (self.map.map_yaw + goal.yaw_rad + pi) % (2 * pi) - pi
+
+        sidx = self.map.world_to_map(sx, sy, syaw)
+        gidx = self.map.world_to_map(gx, gy, gyaw)
+        if (
+            sidx[0] <= self.map.min_x_index
+            or sidx[1] <= self.map.min_y_index
+            or sidx[0] >= self.map.max_x_index
+            or sidx[1] >= self.map.max_y_index
+        ) or (
+            gidx[0] <= self.map.min_x_index
+            or gidx[1] <= self.map.min_y_index
+            or gidx[0] >= self.map.max_x_index
+            or gidx[1] >= self.map.max_y_index
+        ):
+            return (
+                None,
+                f"输入坐标不在地图范围内：({start.x}, {start.y}) -> ({sx}, {sy}), ({goal.x}, {goal.y}) -> ({gx}, {gy})",
+            )
+
         start_node = HNode(
-            *self.map.world_to_map(start.x, start.y, start.yaw_rad),
+            *sidx,
             True,
-            [start.x],
-            [start.y],
-            [start.yaw_rad],
+            [sx],
+            [sy],
+            [syaw],
             [True],
             cost=0,
         )
         goal_node = HNode(
-            *self.map.world_to_map(goal.x, goal.y, goal.yaw_rad),
+            *gidx,
             True,
-            [goal.x],
-            [goal.y],
-            [goal.yaw_rad],
+            [gx],
+            [gy],
+            [gyaw],
             [True],
         )
+        self.map
 
         openList: Dict[int, HNode] = {}
         closedList: Dict[int, HNode] = {}
@@ -183,8 +225,7 @@ class HybridAStarPlanner:
         while True:
             rs_cnt += 1
             if not openList:
-                print("Error: Cannot find path, No open set")
-                return HPath([], [], [], [], 0)
+                return None, "未搜索出有效路径"
 
             _, c_id = heapq.heappop(pq)
             if c_id in openList:
@@ -216,7 +257,7 @@ class HybridAStarPlanner:
         path = self.get_final_path(closedList, final_path)
         # s_path = self.smooth_path(path)
         # return s_path
-        return path
+        return path, ""
 
     def update_node_with_analytic_expansion(self, current: HNode, goal: HNode):
         # analytic expansion(解析扩张)
@@ -445,8 +486,8 @@ class HybridAStarPlanner:
         # h_rs = 999999999 if path is None else path.L
 
         # ? 对于障碍物较多的环境，貌似h_rs没有什么机会大于h_star，不过打表查询对性能影响很小
-        if h_rs > h_star:
-            pass
+        # if h_rs > h_star:
+        #     pass
 
         # *两者取最大
         return max(h_star, h_rs)
@@ -501,8 +542,7 @@ class HybridAStarPlanner:
     def calc_cost(n: HNode, h: float) -> float:
         return n.cost + A.H_WEIGHT * h  # 启发项乘个权重
 
-    @staticmethod
-    def get_final_path(closed: Dict[int, HNode], goal_node: HNode):
+    def get_final_path(self, closed: Dict[int, HNode], goal_node: HNode) -> HPath:
         reversed_x, reversed_y, reversed_yaw = (
             list(reversed(goal_node.x_list)),
             list(reversed(goal_node.y_list)),
@@ -527,9 +567,22 @@ class HybridAStarPlanner:
         direction[0] = direction[1]  # adjust first direction
 
         path = HPath(reversed_x, reversed_y, reversed_yaw, direction, final_cost)
+
+        # 地图 -> 世界坐标转换
+        out = np.stack([path.x_list, path.y_list, np.ones_like(path.x_list)], axis=0)  # shape: (3, N)
+        global_xy = self.map.SE2 @ out  # map to world
+
+        # 更新路径点为世界坐标
+        path.x_list = global_xy[0].tolist()
+        path.y_list = global_xy[1].tolist()
+
+        # 角度变换（注意：地图内部角度是相对角度，要加回去）
+        path.yaw_list = [((yaw - self.map.map_yaw + pi) % (2 * pi) - pi) for yaw in path.yaw_list]
+
         return path
 
     def smooth_path(self, path: HPath) -> HPath:
+        #! 还没调好，可能不会用
         x = np.array(path.x_list)
         y = np.array(path.y_list)
         orig_x = np.copy(x)
@@ -589,23 +642,34 @@ def main():
     print("Start Hybrid A* planning")
 
     # Set Initial parameters
-    start = Pose2D(40.0, 10.0, 90.0, deg=True)
-    goal = Pose2D(45.0, 32, 180.0, deg=True)
-    # goal = Pose2D(40.0, 12.0, yaw=0, deg=True)
+    if not S.Debug.test_sim_origin:
+        sim_origin = Pose2D(0, 0, 0)
+        # start = Pose2D(40.0, 10.0, 90.0, deg=True)
+        # goal = Pose2D(45.0, 35, 180.0, deg=True)
+        start = Pose2D(-40.0, 10.0, 90.0, deg=True)
+        goal = Pose2D(45.0, -35, 180.0, deg=True)
+    else:
+        # 这个测试接口处转换
+        # TODO: 没测转角
+        sim_origin = Pose2D(2, 5, 0, deg=True)
+        start = Pose2D(42, 15, 90, deg=True)
+        goal = Pose2D(47, 40, 180, deg=True)
 
     print("start : ", start)
     print("goal : ", goal)
     print("max curvature : ", tan(C.MAX_STEER) / C.WB)
 
-    map = HMap(MAP_PASSABLE)
+    map = HMap(MAP_PASSABLE, origin=sim_origin)
     planner = HybridAStarPlanner(map)
-    path = planner.planning(start, goal)
+    path, message = planner.planning(start, goal)
+    if path is None:
+        print(message)
+        return
 
     x = [x / A.XY_GRID_RESOLUTION for x in path.x_list]
     y = [y / A.XY_GRID_RESOLUTION for y in path.y_list]
     if show_animation:
         fig, ax = plt.subplots()
-        # ax.plot(x, y)
         plot_path_curvature_map(path, ax)
         plot_binary_map(MAP_PASSABLE, ax)
         plt_tight_show()
