@@ -1,0 +1,11 @@
+# PathPlanning.srv
+
+# ===== Request =====
+geometry_msgs/Pose2D start
+geometry_msgs/Pose2D goal
+
+---
+# ===== Response =====
+path_msgs/HPath path
+bool success
+string reason

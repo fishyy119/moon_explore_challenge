@@ -18,3 +18,7 @@ scipy==1.13.1
 # 性能分析
 line_profiler==4.2.0
 
+# 编译srv
+empy==3.3.4
+lark==1.2.2
+catkin_pkg==1.0.0
