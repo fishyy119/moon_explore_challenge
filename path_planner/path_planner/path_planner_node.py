@@ -5,8 +5,10 @@ from nav_msgs.msg import OccupancyGrid
 from path_msgs.msg import HPath as HPathROS
 from path_msgs.srv import PathPlanning
 from path_planner.hybrid_a_star_planner import HMap, HPath, HybridAStarPlanner
+from path_planner.utils import Pose2D as MyPose2D
 from rclpy.node import Node
-from utils import Pose2D as MyPose2D
+
+# from scipy.spatial.transform import Rotation as R
 
 
 class HybridAStarNode(Node):
@@ -15,10 +17,10 @@ class HybridAStarNode(Node):
         self.INFO = self.get_logger().info
         self.WARN = self.get_logger().warn
         self.map_sub = self.create_subscription(OccupancyGrid, "/map", self.map_callback, 10)
-        # self.path_pub = self.create_publisher(HPathROS, "/plan_path", 10)
+        self.path_pub = self.create_publisher(HPathROS, "/plan_path", 10)
 
         # 规划服务
-        self.planning_srv = self.create_service(PathPlanning, "plan_path", self.handle_plan_path)
+        self.planning_srv = self.create_service(PathPlanning, "path_planning", self.handle_plan_path)
 
         self.map_msg = None
         self.map = None
@@ -34,14 +36,27 @@ class HybridAStarNode(Node):
 
         # 缓存的ROS地图信息，需要时再构造规划器实例
         msg = self.map_msg
-        width = msg.info.width
-        height = msg.info.height
-        resolution = msg.info.resolution
+        info = msg.info
+        width = info.width
+        height = info.height
+        resolution = info.resolution
         data = np.array(msg.data, dtype=np.int8).reshape((height, width))
-        ob_map = data > 50  # 通常占用率大于50算作障碍物
+        ob_map = (data > 65) | (data == -1)  # 未知区域和障碍物
 
-        self.map = HMap(ob_map, resolution=resolution)
-        self.planner = HybridAStarPlanner(self.map)  # TODO: map_msg的origin
+        origin = info.origin
+        q = origin.orientation
+        quat = [q.x, q.y, q.z, q.w]
+
+        # 转换为欧拉角（roll, pitch, yaw）
+        # * 不考虑yaw
+        # r = R.from_quat(quat)
+        # roll, pitch, yaw = r.as_euler("xyz")
+        self.map = HMap(
+            ob_map,
+            resolution=resolution,
+            origin=MyPose2D(origin.position.x, origin.position.y, 0),
+        )
+        self.planner = HybridAStarPlanner(self.map)
 
         start = MyPose2D(request.start.x, request.start.y, request.start.theta)
         goal = MyPose2D(request.goal.x, request.goal.y, request.goal.theta)
@@ -54,7 +69,10 @@ class HybridAStarNode(Node):
         else:
             response.success = True
             response.reason = f"规划路径成功"
-            response.path = self.convert_to_hpath_msg(path)  # 路径放响应中
+            path_msg = self.convert_to_hpath_msg(path)
+            response.path = path_msg  # 路径放响应中
+            self.path_pub.publish(path_msg)
+            self.INFO("发布路径")
 
         return response
 
@@ -71,7 +89,7 @@ class HybridAStarNode(Node):
             pose.x = x
             pose.y = y
             pose.theta = yaw
-            msg.poses.append(pose)
+            msg.poses.append(pose)  # type: ignore
 
         return msg
 

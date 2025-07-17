@@ -4,7 +4,6 @@ from typing import NamedTuple
 
 import numpy as np
 from numpy.typing import NDArray
-from scipy.spatial.transform import Rotation
 
 
 class Settings:
@@ -15,8 +14,8 @@ class Settings:
         LB = 0.2  # 后轴到后端（distance from rear to vehicle back end）
         MAX_STEER = 0.5  # 前轮最大转向角 [rad] maximum steering angle
 
-        BUBBLE_DIST = (LF - LB) / 2.0  # distance from rear to center of vehicle.
-        BUBBLE_R = np.hypot((LF + LB) / 2.0, W / 2.0)  # bubble radius
+        BUBBLE_DIST = (LF - LB) / 2.0  # 后轴到中心（distance from rear to center of vehicle.）
+        BUBBLE_R = np.hypot((LF + LB) / 2.0, W / 2.0)  # 车辆半径，以中心为圆心绘制最小包络圆形
 
         # 这个只是画图用的，主函数里没用到
         # 此处能发现路径的参考点是车辆后轴中心
@@ -27,8 +26,8 @@ class Settings:
         # ==============================================================================
         # 地图的相关参数
         # ==============================================================================
-        MAP_MAX_SIZE = 7  # 地图尺寸 [m]
-        XY_GRID_RESOLUTION = 0.1  # 栅格分辨率 [m]
+        MAP_MAX_SIZE = 7  # 地图尺寸 [m] (预计算用的)
+        XY_GRID_RESOLUTION = 0.1  # 栅格分辨率 [m] (实际应用时会使用ROS消息中的分辨率)
         YAW_GRID_RESOLUTION = np.deg2rad(15.0)  # 节点偏航角分辨率 [rad]
         MOTION_RESOLUTION = 0.01  # 路径积分的分辨率 [m]
         N_STEER = 20  # 转向指令的生成数量
@@ -59,6 +58,7 @@ class Settings:
 
         # ==============================================================================
         # 路径平滑相关
+        # ! 最终没有使用路径平滑
         # ==============================================================================
         LEARN_RATE = 0.1
         ITERATIONS: int = 100  # 迭代次数
@@ -70,7 +70,7 @@ class Settings:
         # ==============================================================================
         # 其他参数
         # ==============================================================================
-        SAFETY_MARGIN_RATIO = 1.2  # 对机器人半径扩张增加安全性
+        SAFETY_MARGIN_RATIO = 1.2  # 对机器人半径额外乘安全系数
 
     class Debug:
         use_profile = True
@@ -111,26 +111,6 @@ class Pose2D:
             self._yaw = yaw
         pi = math.pi
         self._yaw = (self._yaw + pi) % (2 * pi) - pi
-
-    @classmethod
-    def from_pose_msg(cls, x: float, y: float, qx: float, qy: float, qz: float, qw: float) -> "Pose2D":
-        """
-        从 ROS Pose 消息创建 Pose2D 实例
-        这里不处理 Pose 消息的实例，因此参数是提取后的
-        坐标系是slam的图像坐标系：右下前
-        要先转换回前左上
-
-        Args:
-            ROS 2 中的 geometry_msgs.msg.Pose 消息中的必要参数
-
-        Returns:
-            Pose2D: 生成的二维位姿
-        """
-        R_ = np.array([[0, 0, 1], [-1, 0, 0], [0, -1, 0]])  # webots中相机系：前左上；图像的坐标系：右下前
-        camera_rotation = np.dot(Rotation.from_quat([qx, qy, qz, qw]).as_matrix(), R_.T)
-        yaw = Rotation.from_matrix(camera_rotation).as_euler("xyz")[2]
-        # yaw = Rotation.from_quat([qx, qy, qz, qw]).as_euler("xyz")[2]
-        return cls(x, y, yaw)
 
     def __sub__(self, other: "Pose2D") -> float:
         return math.hypot(self.x - other.x, self.y - other.y)

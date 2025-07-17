@@ -2,13 +2,15 @@
 <?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
 <package format="3">
   <name>path_planner</name>
-  <version>0.2.0</version>
+  <version>0.20250717.1</version>
   <description>路径规划主体包，使用混合A*算法</description>
   <maintainer email="1830979240@qq.com">yyy</maintainer>
   <license>MIT</license>
 
   <depend>rclpy</depend>
   <depend>path_msgs</depend>
+  <depend>nav_msgs</depend>
+  <depend>std_msgs</depend>
 
   <export>
     <build_type>ament_python</build_type>

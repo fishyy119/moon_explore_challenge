@@ -156,9 +156,12 @@ class HybridAStarPlanner:
 
     def planning(self, start: Pose2D, goal: Pose2D) -> Tuple[None | HPath, str]:
         """
-        输入都在外部地图坐标系表示，需要转换
-        start: 起点位姿
-        goal: 终点位姿
+        规划主函数
+        输入都在外部地图坐标系表示，需要转换到内部地图坐标系（ROS地图消息的坐标系）
+        !目前仅地图原点平移经过了测试，没有考虑存在旋转的情况
+        Args:
+            start (Pose2D): 起点位姿
+            goal (Pose2D): 终点位姿
         """
         out = np.array([[start.x, goal.x], [start.y, goal.y], [1, 1]])
         inn = self.map.SE2inv @ out
@@ -239,7 +242,6 @@ class HybridAStarPlanner:
                 rs_cnt = 0
                 final_path = self.update_node_with_analytic_expansion(current, goal_node)
                 if final_path is not None:
-                    print("path found")
                     break
 
             new_push_neighbor: Set[int] = set()
@@ -650,7 +652,6 @@ def main():
         goal = Pose2D(45.0, -35, 180.0, deg=True)
     else:
         # 这个测试接口处转换
-        # TODO: 没测转角
         sim_origin = Pose2D(2, 5, 0, deg=True)
         start = Pose2D(42, 15, 90, deg=True)
         goal = Pose2D(47, 40, 180, deg=True)
