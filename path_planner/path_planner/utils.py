@@ -31,6 +31,7 @@ class Settings:
         YAW_GRID_RESOLUTION = np.deg2rad(15.0)  # 节点偏航角分辨率 [rad]
         MOTION_RESOLUTION = 0.01  # 路径积分的分辨率 [m]
         N_STEER = 20  # 转向指令的生成数量
+        OCCUPANCY_THRESHOLD = 65  # 占据栅格地图的概率阈值，大于此值表示为障碍物
 
         # ==============================================================================
         # 损失计算的相关参数

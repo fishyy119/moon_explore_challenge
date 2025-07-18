@@ -2,11 +2,13 @@ import numpy as np
 import rclpy
 from geometry_msgs.msg import Pose2D
 from nav_msgs.msg import OccupancyGrid
+from rclpy.node import Node
+
 from path_msgs.msg import HPath as HPathROS
 from path_msgs.srv import PathPlanning
 from path_planner.hybrid_a_star_planner import HMap, HPath, HybridAStarPlanner
+from path_planner.utils import A
 from path_planner.utils import Pose2D as MyPose2D
-from rclpy.node import Node
 
 # from scipy.spatial.transform import Rotation as R
 
@@ -41,14 +43,13 @@ class HybridAStarNode(Node):
         height = info.height
         resolution = info.resolution
         data = np.array(msg.data, dtype=np.int8).reshape((height, width))
-        ob_map = (data > 65) | (data == -1)  # 未知区域和障碍物
+        ob_map = (data > A.OCCUPANCY_THRESHOLD) | (data == -1)  # 未知区域和障碍物
 
         origin = info.origin
-        q = origin.orientation
-        quat = [q.x, q.y, q.z, q.w]
 
-        # 转换为欧拉角（roll, pitch, yaw）
         # * 不考虑yaw
+        # q = origin.orientation
+        # quat = [q.x, q.y, q.z, q.w]
         # r = R.from_quat(quat)
         # roll, pitch, yaw = r.as_euler("xyz")
         self.map = HMap(
