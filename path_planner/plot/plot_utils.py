@@ -196,7 +196,7 @@ def plt_flat_axes(axes: List[List[Axes]]) -> List[Axes]:
 
 
 if TYPE_CHECKING:
-    from moon_explore_challenge.hybrid_a_star_planner import HPath
+    from path_planner.hybrid_a_star_planner import HPath
 
 
 def plot_path_curvature_map(path: "HPath", ax: Axes):
@@ -316,6 +316,39 @@ def plot_slope_map(slope: NDArray, ax: Axes, passable_threshold: List[float] = [
     ax_remove_axis(ax)
 
 
+from path_planner.utils import Pose2D, Settings
+
+
+def plot_pose2d_map(
+    pose: Pose2D,
+    ax: Axes,
+    color: ColorType,
+    scale: int = 20,
+) -> None:
+    x = pose.x / Settings.A.XY_GRID_RESOLUTION
+    y = pose.y / Settings.A.XY_GRID_RESOLUTION
+    yaw = pose.yaw_rad
+
+    # 为了让线段变得不显眼
+    dx = np.cos(yaw) * 0.01
+    dy = np.sin(yaw) * 0.01
+    # 绘制箭头
+    ax.annotate(
+        text="",
+        xy=(x + dx, y + dy),  # 箭头指向方向
+        xytext=(x, y),  # 箭头起点
+        arrowprops=dict(
+            arrowstyle="fancy",
+            color=color,
+            mutation_scale=scale,
+            shrinkA=0,
+            shrinkB=0,
+            path_effects=[pe.withStroke(linewidth=2, foreground="gray")],  # 添加外框
+        ),
+        zorder=5,
+    )
+
+
 def plot_arrow(x, y, yaw, length=1.0, width=0.5, fc="r", ec="k"):
     if isinstance(x, list):
         for ix, iy, iyaw in zip(x, y, yaw):
@@ -325,3 +358,28 @@ def plot_arrow(x, y, yaw, length=1.0, width=0.5, fc="r", ec="k"):
             x, y, length * math.cos(yaw), length * math.sin(yaw), fc=fc, ec=ec, head_width=width, head_length=width
         )
         plt.plot(x, y)
+
+
+def plot_canPoints_map(canPoints: List[Tuple[Pose2D, float]], ax: Axes):
+    # 将分数映射为颜色
+    cmap = cm.get_cmap("viridis")
+    scores = [s for p, s in canPoints]
+    min_score, max_score = min(scores), max(scores)
+    norm = Normalize(vmin=min_score, vmax=max_score)
+    for point, score in canPoints:
+        rgba_color = cmap(norm(score))
+        plot_pose2d_map(point, ax=ax, color=rgba_color, scale=15)
+
+    # 创建伪图像对象以生成 colorbar
+    sm = cm.ScalarMappable(cmap=cmap, norm=norm)
+    sm.set_array([])
+
+    divider = make_axes_locatable(ax)
+    cax = divider.append_axes("right", size="5%", pad=0.05)
+    # cb = ax.figure.colorbar(sm, cax=cax)  # type: ignore
+
+    cb = ax.figure.colorbar(sm, cax=cax, orientation="vertical")  # type: ignore
+    cb.ax.set_title("评分", fontsize=10.5, pad=5)
+    # cb.ax.yaxis.set_tick_params(labelsize=10)
+    for label in cb.ax.get_yticklabels():
+        label.set_fontname("Times New Roman")

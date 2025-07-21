@@ -32,6 +32,7 @@ class Settings:
         MOTION_RESOLUTION = 0.01  # 路径积分的分辨率 [m]
         N_STEER = 20  # 转向指令的生成数量
         OCCUPANCY_THRESHOLD = 65  # 占据栅格地图的概率阈值，大于此值表示为障碍物
+        SAFETY_MARGIN_RATIO = 1.2  # 对机器人半径额外乘安全系数
 
         # ==============================================================================
         # 损失计算的相关参数
@@ -68,10 +69,10 @@ class Settings:
         WEIGHT_FIDELITY = 0.2
         OBSTACLE_SIGMA = 1.0
 
-        # ==============================================================================
-        # 其他参数
-        # ==============================================================================
-        SAFETY_MARGIN_RATIO = 1.2  # 对机器人半径额外乘安全系数
+    class Explore:
+        R_RATIO_LIST = [0, 0.3, 0.6, 0.8]
+        SUM_SAMPLE_NUM = 20
+        OUT_AREA_PANELTYS = [1.0, 0.5, 0.25]
 
     class Debug:
         use_profile = True
@@ -80,11 +81,13 @@ class Settings:
 
     C = Car()
     A = AStar()
+    E = Explore()
 
 
 S = Settings()
 C = S.C
 A = S.A
+E = S.E
 
 
 class PoseDiff(NamedTuple):

@@ -10,5 +10,6 @@
   "terminal.integrated.env.linux": { // 为了其他地方的脚本也能导入根目录的包
     "PYTHONPATH": "${workspaceFolder}"
   },
-  "python.analysis.typeCheckingMode": "standard"
+  "python.analysis.typeCheckingMode": "standard",
+  "cmake.ignoreCMakeListsMissing": true
 }

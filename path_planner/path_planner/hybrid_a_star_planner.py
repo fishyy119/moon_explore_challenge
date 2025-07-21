@@ -84,6 +84,7 @@ class HMap:
             origin (float, optional): 接收到的地图中00栅格相对于地图坐标系的位姿
         """
         self.obstacle_map = ob_map
+        self.kdTree: cKDTree | None = None
         self.resolution = resolution
         self.yaw_resolution = yaw_resolution
         self.rr = rr
@@ -135,10 +136,12 @@ class HMap:
 
     def build_kdtree(self) -> cKDTree:
         """从 obstacle_map 中提取障碍物坐标，并构建 KDTree"""
-        obstacle_indices = np.argwhere(self.obstacle_map)  # shape (N, 2)
-        self.kd_tree_points = obstacle_indices * self.resolution  # 将地图索引转换为世界坐标（米）
-        self.kd_tree_points = self.kd_tree_points[:, [1, 0]]  # 地图的索引是yx顺序的，进行交换
-        return cKDTree(self.kd_tree_points)
+        if self.kdTree is None:
+            obstacle_indices = np.argwhere(self.obstacle_map)  # shape (N, 2)
+            self.kd_tree_points = obstacle_indices * self.resolution  # 将地图索引转换为世界坐标（米）
+            self.kd_tree_points = self.kd_tree_points[:, [1, 0]]  # 地图的索引是yx顺序的，进行交换
+            self.kdTree = cKDTree(self.kd_tree_points)
+        return self.kdTree
 
 
 class HybridAStarPlanner:
@@ -189,6 +192,8 @@ class HybridAStarPlanner:
                 None,
                 f"输入坐标不在地图范围内：({start.x}, {start.y}) -> ({sx}, {sy}), ({goal.x}, {goal.y}) -> ({gx}, {gy})",
             )
+
+        # TODO: 起点在障碍物（膨胀后障碍物）里怎么办？
 
         start_node = HNode(
             *sidx,
@@ -646,10 +651,10 @@ def main():
     # Set Initial parameters
     if not S.Debug.test_sim_origin:
         sim_origin = Pose2D(0, 0, 0)
-        # start = Pose2D(40.0, 10.0, 90.0, deg=True)
-        # goal = Pose2D(45.0, 35, 180.0, deg=True)
-        start = Pose2D(-40.0, 10.0, 90.0, deg=True)
-        goal = Pose2D(45.0, -35, 180.0, deg=True)
+        start = Pose2D(40.0, 10.0, 90.0, deg=True)
+        goal = Pose2D(45.0, 35, 180.0, deg=True)
+        # start = Pose2D(-40.0, 10.0, 90.0, deg=True)
+        # goal = Pose2D(45.0, -35, 180.0, deg=True)
     else:
         # 这个测试接口处转换
         sim_origin = Pose2D(2, 5, 0, deg=True)
