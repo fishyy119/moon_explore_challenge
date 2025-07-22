@@ -1,11 +1,17 @@
 # PathPlanning.srv
 
 # ===== Request =====
+# 起点终点位姿，包括 `x`、`y` 和 `theta`
 geometry_msgs/Pose2D start
 geometry_msgs/Pose2D goal
 
 ---
 # ===== Response =====
+# 规划得到的路径
 path_msgs/HPath path
+
+# 是否规划成功 
 bool success
+
+# 错误文本信息
 string reason

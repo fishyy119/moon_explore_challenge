@@ -2,8 +2,8 @@
 <?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
 <package format="3">
   <name>path_planner</name>
-  <version>0.20250717.1</version>
-  <description>路径规划主体包，使用混合A*算法</description>
+  <version>0.20250722.1</version>
+  <description>规划主体包，包括基于混合A*算法的路径规划与探索规划</description>
   <maintainer email="1830979240@qq.com">yyy</maintainer>
   <license>MIT</license>
 

@@ -13,15 +13,15 @@ data_files.append(("share/" + package_name, ["package.xml"]))
 
 setup(
     name=package_name,
-    version="0.1.0",
+    version="0.20250722.1",
     packages=find_packages(exclude=["test"]),
     data_files=data_files,
     install_requires=["setuptools"],
     zip_safe=True,
     maintainer="yyy",
     maintainer_email="1830979240@qq.com",
-    description="TODO: Package description",
-    license="TODO: License declaration",
+    description="规划主体包，包括基于混合A*算法的路径规划与探索规划",
+    license="MIT",
     tests_require=["pytest"],
     entry_points={
         "console_scripts": [

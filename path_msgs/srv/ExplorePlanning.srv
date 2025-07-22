@@ -1,0 +1,11 @@
+# ExplorePlanning.srv
+
+# ===== Request =====
+# 期望起点终点位姿，包括 `x`、`y` 和 `theta`
+geometry_msgs/Pose2D start
+geometry_msgs/Pose2D goal
+
+---
+# ===== Response =====
+# 输出未被障碍物遮挡的候选目标点及其评分
+path_msgs/CandidatePose2D[] candidates

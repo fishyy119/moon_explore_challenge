@@ -8,7 +8,9 @@ find_package(geometry_msgs REQUIRED)
 
 rosidl_generate_interfaces(${PROJECT_NAME}
   "msg/HPath.msg"
+  "msg/CandidatePose2D.msg"
   "srv/PathPlanning.srv"
+  "srv/ExplorePlanning.srv"
   DEPENDENCIES geometry_msgs
 )
 

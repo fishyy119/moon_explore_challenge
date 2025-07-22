@@ -1,14 +1,17 @@
+from typing import cast
+
 import numpy as np
 import rclpy
 from geometry_msgs.msg import Pose2D
 from nav_msgs.msg import OccupancyGrid
-from rclpy.node import Node
-
 from path_msgs.msg import HPath as HPathROS
-from path_msgs.srv import PathPlanning
+from path_msgs.msg._candidate_pose2_d import CandidatePose2D
+from path_msgs.srv import ExplorePlanning, PathPlanning
+from path_planner.exploration_planner import ExplorePlanner
 from path_planner.hybrid_a_star_planner import HMap, HPath, HybridAStarPlanner
 from path_planner.utils import A
 from path_planner.utils import Pose2D as MyPose2D
+from rclpy.node import Node
 
 # from scipy.spatial.transform import Rotation as R
 
@@ -23,18 +26,18 @@ class HybridAStarNode(Node):
 
         # 规划服务
         self.planning_srv = self.create_service(PathPlanning, "path_planning", self.handle_plan_path)
+        self.explore_srv = self.create_service(ExplorePlanning, "explore_planning", self.handle_explore_plan)
 
         self.map_msg = None
         self.map = None
-        self.planner = None
+        self.path_planner = None
 
         self.INFO("路径规划器初始化完毕")
 
-    def handle_plan_path(self, request: PathPlanning.Request, response: PathPlanning.Response):
+    def generate_hmap(self) -> bool:
         if self.map_msg is None:
-            response.success = False
-            response.reason = "未收到地图"
-            return response
+            self.INFO("未收到地图，无法进行规划")
+            return False
 
         # 缓存的ROS地图信息，需要时再构造规划器实例
         msg = self.map_msg
@@ -57,12 +60,21 @@ class HybridAStarNode(Node):
             resolution=resolution,
             origin=MyPose2D(origin.position.x, origin.position.y, 0),
         )
-        self.planner = HybridAStarPlanner(self.map)
+        return True
+
+    def handle_plan_path(self, request: PathPlanning.Request, response: PathPlanning.Response):
+        if self.map is None:
+            if not self.generate_hmap():
+                response.success = False
+                response.reason = "未收到地图"
+                return response
+        self.map = cast(HMap, self.map)
+        self.path_planner = HybridAStarPlanner(self.map)
 
         start = MyPose2D(request.start.x, request.start.y, request.start.theta)
         goal = MyPose2D(request.goal.x, request.goal.y, request.goal.theta)
 
-        path, plan_result = self.planner.planning(start, goal)
+        path, plan_result = self.path_planner.planning(start, goal)
         if path is None:
             response.success = False
             response.reason = plan_result
@@ -75,6 +87,28 @@ class HybridAStarNode(Node):
             self.path_pub.publish(path_msg)
             self.INFO("发布路径")
 
+        return response
+
+    def handle_explore_plan(self, request: ExplorePlanning.Request, response: ExplorePlanning.Response):
+        if self.map is None:
+            if not self.generate_hmap():
+                return response
+        self.map = cast(HMap, self.map)
+        self.explore_planner = ExplorePlanner(self.map)
+
+        start = MyPose2D(request.start.x, request.start.y, request.start.theta)
+        goal = MyPose2D(request.goal.x, request.goal.y, request.goal.theta)
+
+        candidates = self.explore_planner.planning(start, goal)
+        for pose, score in candidates:
+            ps_msg = CandidatePose2D()
+            ps_msg.pose.x = pose.x
+            ps_msg.pose.y = pose.y
+            ps_msg.pose.theta = pose.yaw_rad
+            ps_msg.score = score
+            response.candidates.append(ps_msg)  # type: ignore
+
+        self.INFO(f"探索规划完成，共生成 {len(response.candidates)} 个候选点")
         return response
 
     def map_callback(self, msg: OccupancyGrid):
