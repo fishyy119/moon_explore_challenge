@@ -40,8 +40,8 @@ from pathlib import Path
 
 import numpy as np
 
-from moon_explore_challenge.rs_planning import reeds_shepp_path_planning
-from moon_explore_challenge.utils import A, C, S
+from path_planner.rs_planning import reeds_shepp_path_planning
+from path_planner.utils import A, C, S
 
 npy_file = Path(__file__).resolve().parent / f"resource/rs_table_{A.MAP_MAX_SIZE}x{A.MAP_MAX_SIZE}.npy"
 
@@ -74,7 +74,7 @@ def precompute_rs_table():
                     gx=dx,
                     gy=dy,
                     gyaw=dyaw,
-                    maxc=math.tan(C.MAX_STEER) / C.WB,
+                    maxc=C.MAX_C,
                     step_size=A.MOTION_RESOLUTION,
                 )
                 cost = path.L if path is not None else np.inf

@@ -258,6 +258,7 @@ def reeds_shepp_path_planning(
     maxc: float,
     step_size: float = 0.2,
 ) -> RPath | None:
+    """测试用转换层，非外部调用主入口"""
     p0 = Pose2D(sx, sy, syaw)
     p1 = Pose2D(gx, gy, gyaw)
     paths = calc_paths(p0, p1, maxc, step_size)

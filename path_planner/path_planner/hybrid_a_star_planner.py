@@ -89,7 +89,7 @@ class HMap:
         self.yaw_resolution = yaw_resolution
         self.rr = rr
         self.edf_map: NDArray[np.float64] = distance_transform_edt(~ob_map) * resolution  # [m] # type: ignore
-        self.euclidean_dilated_ob_map = self.edf_map <= rr * A.SAFETY_MARGIN_RATIO  # 根据半径膨胀
+        self.euclidean_dilated_ob_map: NDArray[np.bool_] = self.edf_map <= rr * A.SAFETY_MARGIN_RATIO  # 根据半径膨胀
 
         # 地图参数
         self.max_x_index, self.max_y_index = self.obstacle_map.shape
@@ -100,6 +100,7 @@ class HMap:
         self.yaw_w = round(self.max_yaw_index - self.min_yaw_index)
 
         # 输入输出要加这个转换
+        #! 仅考虑了平移，未对旋转加以测试
         self.origin_pose = origin
         self.SE2 = origin.SE2  # 内部 -> 外部
         self.SE2inv = origin.SE2inv  # 外部 -> 内部
@@ -276,11 +277,10 @@ class HybridAStarPlanner:
         goal_y = goal.y_list[-1]
         goal_yaw = goal.yaw_list[-1]
 
-        max_curvature = tan(C.MAX_STEER) / C.WB
         paths: List[rs.RPath] = rs.calc_paths(
             Pose2D(start_x, start_y, start_yaw),
             Pose2D(goal_x, goal_y, goal_yaw),
-            max_curvature,
+            C.MAX_C,
             step_size=A.MOTION_RESOLUTION,
         )
 
@@ -487,7 +487,7 @@ class HybridAStarPlanner:
         #     goal.x_list[0],
         #     goal.y_list[0],
         #     goal.yaw_list[0],
-        #     maxc=math.tan(C.MAX_STEER) / C.WB,
+        #     maxc=C.MAX_C,
         #     step_size=A.MOTION_RESOLUTION,
         # )
         # h_rs = 999999999 if path is None else path.L
@@ -663,7 +663,7 @@ def main():
 
     print("start : ", start)
     print("goal : ", goal)
-    print("max curvature : ", tan(C.MAX_STEER) / C.WB)
+    print("max curvature : ", C.MAX_C)
 
     map = HMap(MAP_PASSABLE, origin=sim_origin)
     planner = HybridAStarPlanner(map)

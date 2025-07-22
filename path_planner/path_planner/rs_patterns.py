@@ -22,8 +22,11 @@ path_funcs: Dict[str, PathFunction] = {}
 def wrap_as_result(fn: RawPathFunction) -> PathFunction:
     @wraps(fn)
     def wrapper(x: float, y: float, phi: float) -> PathFunctionResult:
-        success, params, path = fn(x, y, phi)
-        return PathFunctionResult(success, params, path)
+        try:
+            success, params, path = fn(x, y, phi)
+            return PathFunctionResult(success, params, path)
+        except:
+            return PathFunctionResult(False, [], [])
 
     return wrapper
 

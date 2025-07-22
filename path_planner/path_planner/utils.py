@@ -13,6 +13,7 @@ class Settings:
         LF = 0.6  # 后轴到前端（distance from rear to vehicle front end）
         LB = 0.2  # 后轴到后端（distance from rear to vehicle back end）
         MAX_STEER = 0.5  # 前轮最大转向角 [rad] maximum steering angle
+        MAX_C = math.tan(MAX_STEER) / WB  # 最大转弯曲率 [1/m]
 
         BUBBLE_DIST = (LF - LB) / 2.0  # 后轴到中心（distance from rear to center of vehicle.）
         BUBBLE_R = np.hypot((LF + LB) / 2.0, W / 2.0)  # 车辆半径，以中心为圆心绘制最小包络圆形
@@ -70,9 +71,17 @@ class Settings:
         OBSTACLE_SIGMA = 1.0
 
     class Explore:
-        R_RATIO_LIST = [0, 0.3, 0.6, 0.8]
+        # 以起点与终点之间距离为基准，按半径分割为不同区域
+        # 如果最高不是1，在不同的地图尺度下表现应该会有差异
+        R_RATIO_LIST = [0.0, 0.3, 0.6, 0.8, 1.0]
+        # 更希望在距离终点更近的区域内采样，此处对面积惩罚，各区域采样点数正比于惩罚后面积
+        # 需要比上面的RATIO_LIST的长度短1，如果过短会直接用最小值填充
+        OUT_AREA_PANELTYS = [1.0, 0.5, 0.25, 0.05]
+        # 期望的总采样点数
         SUM_SAMPLE_NUM = 20
-        OUT_AREA_PANELTYS = [1.0, 0.5, 0.25]
+        # 计算不考虑障碍的rs路径长度作为代价
+        # 由已知段（起点到候选点）与未知段（候选点到终点）组成，此处对未知段长度惩罚
+        UNKOWN_PATH_PANELTY = 2
 
     class Debug:
         use_profile = True
