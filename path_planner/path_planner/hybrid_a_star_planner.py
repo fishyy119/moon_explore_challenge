@@ -18,11 +18,10 @@ import numpy as np
 import rs_planning as rs
 from dynamic_programming_heuristic import ANodeProto, calc_distance_heuristic
 from numpy.typing import NDArray
+from path_planner import RESOURCE_DIR
 from scipy.ndimage import distance_transform_edt
 from scipy.spatial import cKDTree
 from utils import A, C, Pose2D, S
-
-from path_planner import RESOURCE_DIR
 
 
 @dataclass
@@ -92,7 +91,7 @@ class HMap:
         self.euclidean_dilated_ob_map: NDArray[np.bool_] = self.edf_map <= rr * A.SAFETY_MARGIN_RATIO  # 根据半径膨胀
 
         # 地图参数
-        self.max_x_index, self.max_y_index = self.obstacle_map.shape
+        self.max_y_index, self.max_x_index = self.obstacle_map.shape  # 先y后x
         self.min_x_index, self.min_y_index = 0, 0
         self.x_width, self.y_width = self.obstacle_map.shape
         self.min_yaw_index = round(-pi / yaw_resolution) - 1
@@ -146,12 +145,11 @@ class HMap:
 
 
 class HybridAStarPlanner:
-    def __init__(self, map: HMap) -> None:
+    def __init__(self, map: HMap, table_file=RESOURCE_DIR / f"rs_table_{A.MAP_MAX_SIZE}x{A.MAP_MAX_SIZE}.npy") -> None:
         self.map = map
         self.obstacle_kd_tree = map.build_kdtree()
         self.kd_tree_points = self.map.kd_tree_points
         self.hrs_table: NDArray[np.float64] | None
-        table_file = RESOURCE_DIR / f"rs_table_{A.MAP_MAX_SIZE}x{A.MAP_MAX_SIZE}.npy"
         try:
             self.hrs_table = np.load(table_file)
         except FileNotFoundError:

@@ -47,7 +47,7 @@ class ExplorePlanner:
 
         # 创建坐标网格并计算极坐标
         H, W = self.dilated_ob_map.shape
-        x, y = np.meshgrid(np.arange(H), np.arange(W))
+        x, y = np.meshgrid(np.arange(W), np.arange(H))
         dx = x - gx / self.map.resolution
         dy = y - gy / self.map.resolution
         r_map = np.sqrt(dx**2 + dy**2)
@@ -65,8 +65,14 @@ class ExplorePlanner:
         total_area = sum(region_areas)
         sample_results: List[CandidatePose] = []
         # 终点可达的情况下，终点也添加进去
-        if not self.dilated_ob_map[round(gy / self.map.resolution), round(gx / self.map.resolution)]:
-            sample_results.append(CandidatePose(gx, gy, gyaw, is_goal=True))
+        gx_px = round(gy / self.map.resolution)
+        gy_px = round(gx / self.map.resolution)
+        if (
+            self.map.min_x_index <= gx_px < self.map.max_x_index
+            and self.map.min_y_index <= gy_px < self.map.max_y_index
+        ):
+            if not self.dilated_ob_map[gy_px, gx_px]:
+                sample_results.append(CandidatePose(gx, gy, gyaw, is_goal=True))
 
         if total_area > 0:
             sample_nums = [ceil(E.SUM_SAMPLE_NUM * a / total_area) for a in region_areas]
@@ -137,6 +143,7 @@ class ExplorePlanner:
                 global_xy = self.map.SE2 @ np.array([c.x, c.y, 1])
                 global_yaw = (c.yaw - self.map.map_yaw + pi) % (2 * pi) - pi
                 result.append((Pose2D(global_xy[0], global_xy[1], global_yaw), c.cost))
+        result.sort(key=lambda x: x[1])
         return result
 
 

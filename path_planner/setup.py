@@ -1,3 +1,4 @@
+import glob
 from typing import List, Tuple
 
 from setuptools import find_packages, setup
@@ -6,8 +7,9 @@ package_name = "path_planner"
 
 data_files: List[Tuple[str, List[str]]] = []
 data_files.append(("share/ament_index/resource_index/packages", ["resource/" + package_name]))
-# data_files.append(("share/" + package_name + "/resource", ["resource/map_passable.npy"]))
-# TODO：添加rs_table7x7.npy
+
+rs_table_files = glob.glob("resource/rs_table*")
+data_files.append(("share/" + package_name + "/resource", rs_table_files + ["resource/map_raw.txt"]))
 data_files.append(("share/" + package_name, ["package.xml"]))
 
 
@@ -27,6 +29,7 @@ setup(
         "console_scripts": [
             "path_planner_node = path_planner.path_planner_node:main",
             "hpath_viz_node = path_planner.hpath_viz_node:main",
+            "test_planner_node = path_planner.test_planner_node:main",
         ],
     },
 )

@@ -38,6 +38,8 @@
   - `path_planner_node.py`：路径规划与探索规划的服务节点
   
   - `hpath_viz_node.py`：路径可视化辅助节点
+
+  - `test_planner_node.py`：对两个服务的简单测试
   
 - **核心功能模块**
   - `hybrid_a_star_planner.py`：路径规划算法的**主入口**
