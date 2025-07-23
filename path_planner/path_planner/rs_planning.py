@@ -248,6 +248,47 @@ def calc_paths(
     return paths
 
 
+def calc_rs_length(
+    sx: float,
+    sy: float,
+    syaw: float,
+    gx: float,
+    gy: float,
+    gyaw: float,
+    maxc: float,
+) -> float:
+    """
+    计算从起点到终点的所有可行 Reeds-Shepp 路径，但是仅返回最优长度作为启发项
+
+    从`calc_paths`中优化掉了所有的无关步骤，包括其调用的一些函数也内联并修改了
+    Args:
+        (sx sy syaw) (Pose2D): 起始位姿。
+        (gx gy gyaw) (Pose2D): 目标位姿。
+        maxc (float): 转弯的最大曲率。
+
+    Returns:
+        float: 最短的RS路径长度
+    """
+    # 归一化
+    dx = gx - sx
+    dy = gy - sy
+    dth = gyaw - syaw
+    c = math.cos(syaw)
+    s = math.sin(syaw)
+    x = (c * dx + s * dy) * maxc
+    y = (-s * dx + c * dy) * maxc
+
+    # 计算最短长度
+    min_L = 999999999
+    for path_func in path_funcs.values():
+        flag, travel_distances, _ = path_func(x, y, dth)
+        # reflect 和 timeflip 都不影响路径总长度
+        if flag:
+            min_L = min(min_L, sum(map(abs, travel_distances)))
+
+    return min_L / maxc
+
+
 def reeds_shepp_path_planning(
     sx: float,
     sy: float,

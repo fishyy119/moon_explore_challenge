@@ -1,6 +1,6 @@
 # path_planner
 
-> 最后编辑日期：2025-07-22
+> 最后编辑日期：2025-07-23
 
 该包实现了基于混合 A* 算法的路径规划模块与探索规划模块，提供服务接口供其他模块请求路径，同时支持路径的可视化功能。
 
@@ -52,8 +52,6 @@
 - `dynamic_programming_heuristic.py`：A*启发代价计算
   
 - `rs_planning.py` / `rs_patterns.py`：Reeds-Shepp 路径计算
-  
-- `preprocess/rs_precompute.py`：打表预生成RS启发代价
   
 - ...
 

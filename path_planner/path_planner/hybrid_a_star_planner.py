@@ -18,7 +18,6 @@ import numpy as np
 import rs_planning as rs
 from dynamic_programming_heuristic import ANodeProto, calc_distance_heuristic
 from numpy.typing import NDArray
-from path_planner import RESOURCE_DIR
 from scipy.ndimage import distance_transform_edt
 from scipy.spatial import cKDTree
 from utils import A, C, Pose2D, S
@@ -145,16 +144,11 @@ class HMap:
 
 
 class HybridAStarPlanner:
-    def __init__(self, map: HMap, table_file=RESOURCE_DIR / f"rs_table_{A.MAP_MAX_SIZE}x{A.MAP_MAX_SIZE}.npy") -> None:
+    def __init__(self, map: HMap) -> None:
         self.map = map
         self.obstacle_kd_tree = map.build_kdtree()
         self.kd_tree_points = self.map.kd_tree_points
         self.hrs_table: NDArray[np.float64] | None
-        try:
-            self.hrs_table = np.load(table_file)
-        except FileNotFoundError:
-            self.hrs_table = None
-            print(f"RS 启发式表{str(table_file)}未找到，将禁用 RS 启发")
 
     def planning(self, start: Pose2D, goal: Pose2D) -> Tuple[None | HPath, str]:
         """
@@ -279,7 +273,7 @@ class HybridAStarPlanner:
             Pose2D(start_x, start_y, start_yaw),
             Pose2D(goal_x, goal_y, goal_yaw),
             C.MAX_C,
-            step_size=A.MOTION_RESOLUTION,
+            step_size=self.map.resolution * A.MOTION_RESOLUTION_RATIO,
         )
 
         if not paths:
@@ -342,9 +336,10 @@ class HybridAStarPlanner:
                 yield (steer, d)
 
     def calc_next_node(self, current: HNode, steer: float, direction: int) -> None | HNode:
-        arc_l = A.XY_GRID_RESOLUTION * 1.5
-        distance = A.MOTION_RESOLUTION * direction
-        steps = int(np.ceil(arc_l / A.MOTION_RESOLUTION))
+        MOTION_RESOLUTION = self.map.resolution * A.MOTION_RESOLUTION_RATIO
+        arc_l = self.map.resolution * 1.5
+        distance = MOTION_RESOLUTION * direction
+        steps = int(np.ceil(arc_l / MOTION_RESOLUTION))
         L = C.WB
         i = np.arange(0, steps + 1)  # shape=(N,)
         delta_yaw = distance * tan(steer) / L  # scalar
@@ -449,50 +444,24 @@ class HybridAStarPlanner:
         # * atar启发式
         ind = self.map.calc_index_2d(n)
         h_star = (
-            999999999 if ind not in self.hstar_dp else self.hstar_dp[ind].cost * A.XY_GRID_RESOLUTION
+            999999999 if ind not in self.hstar_dp else self.hstar_dp[ind].cost * self.map.resolution
         )  # 这里有量纲变换
         h_rs = 0
 
-        # * rs启发式：离线打表
-        h_rs = 0.0  # 表里没有
-        if self.hrs_table is not None:
-            x = goal.x_list[0] - n.x_list[0]
-            y = goal.y_list[0] - n.y_list[0]
-            yaw = goal.yaw_list[0] - n.yaw_list[0]
-            if x < 0:
-                x = -x
-                yaw = -yaw
-            if y < 0:
-                y = -y
-                yaw = -yaw
+        # * rs启发式
+        h_rs = rs.calc_rs_length(
+            n.x_list[0],
+            n.y_list[0],
+            n.yaw_list[0],
+            goal.x_list[0],
+            goal.y_list[0],
+            goal.yaw_list[0],
+            maxc=C.MAX_C,
+        )
 
-            x_idx = round(x / A.XY_GRID_RESOLUTION)
-            y_idx = round(y / A.XY_GRID_RESOLUTION)
-            yaw_idx = round((yaw + pi) / A.YAW_GRID_RESOLUTION)
-
-            # 越界检查
-            x_size, y_size, yaw_size = self.hrs_table.shape
-            if 0 <= x_idx < x_size and 0 <= y_idx < y_size and 0 <= yaw_idx < yaw_size:
-                h_rs = self.hrs_table[x_idx, y_idx, yaw_idx]
-                if math.isinf(h_rs):
-                    h_rs = 999999
-
-        # * rs启发式：另一种在线计算方案
-        # path = rs.reeds_shepp_path_planning(
-        #     n.x_list[0],
-        #     n.y_list[0],
-        #     n.yaw_list[0],
-        #     goal.x_list[0],
-        #     goal.y_list[0],
-        #     goal.yaw_list[0],
-        #     maxc=C.MAX_C,
-        #     step_size=A.MOTION_RESOLUTION,
-        # )
-        # h_rs = 999999999 if path is None else path.L
-
-        # ? 对于障碍物较多的环境，貌似h_rs没有什么机会大于h_star，不过打表查询对性能影响很小
-        # if h_rs > h_star:
-        #     pass
+        # ? 对于障碍物较多的环境，貌似h_rs没有什么机会大于h_star，不过此处不是性能瓶颈
+        if h_rs > h_star:
+            pass  # 调试时的一个记录断点
 
         # *两者取最大
         return max(h_star, h_rs)
@@ -650,7 +619,7 @@ def main():
     if not S.Debug.test_sim_origin:
         sim_origin = Pose2D(0, 0, 0)
         start = Pose2D(40.0, 10.0, 90.0, deg=True)
-        goal = Pose2D(45.0, 35, 180.0, deg=True)
+        goal = Pose2D(45.0, 35.1, 180.0, deg=True)
         # start = Pose2D(-40.0, 10.0, 90.0, deg=True)
         # goal = Pose2D(45.0, -35, 180.0, deg=True)
     else:
@@ -670,8 +639,8 @@ def main():
         print(message)
         return
 
-    x = [x / A.XY_GRID_RESOLUTION for x in path.x_list]
-    y = [y / A.XY_GRID_RESOLUTION for y in path.y_list]
+    x = [x / map.resolution for x in path.x_list]
+    y = [y / map.resolution for y in path.y_list]
     if show_animation:
         fig, ax = plt.subplots()
         plot_path_curvature_map(path, ax)
@@ -716,7 +685,9 @@ if __name__ == "__main__":
         lp.add_function(HybridAStarPlanner.get_neighbors)
         lp.add_function(HybridAStarPlanner.calc_next_node)
         lp.add_function(HybridAStarPlanner.get_final_path)
+        lp.add_function(HybridAStarPlanner.calc_heuristic)
         lp.add_function(rs.calc_paths)
+        lp.add_function(rs.calc_rs_length)
         lp.add_function(calc_distance_heuristic)
         # lp.add_module(rs)
 

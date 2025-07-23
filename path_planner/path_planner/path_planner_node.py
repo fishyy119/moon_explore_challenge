@@ -3,18 +3,18 @@ from typing import cast
 
 import numpy as np
 import rclpy
-from ament_index_python.packages import get_package_share_directory
 from geometry_msgs.msg import Pose2D
 from nav_msgs.msg import OccupancyGrid
-from path_msgs.msg import HPath as HPathROS
 from path_msgs.msg._candidate_pose2_d import CandidatePose2D
+from rclpy.node import Node
+from std_msgs.msg import Header
+
+from path_msgs.msg import HPath as HPathROS
 from path_msgs.srv import ExplorePlanning, PathPlanning
 from path_planner.exploration_planner import ExplorePlanner
 from path_planner.hybrid_a_star_planner import HMap, HPath, HybridAStarPlanner
 from path_planner.utils import A
 from path_planner.utils import Pose2D as MyPose2D
-from rclpy.node import Node
-from std_msgs.msg import Header
 
 # from scipy.spatial.transform import Rotation as R
 
@@ -34,8 +34,6 @@ class HybridAStarNode(Node):
         self.map_msg = None
         self.map = None
         self.path_planner = None
-        package_share_dir = Path(get_package_share_directory("path_planner"))
-        self.table_file = package_share_dir / f"resource/rs_table_{A.MAP_MAX_SIZE}x{A.MAP_MAX_SIZE}.npy"
 
         self.INFO("路径规划器初始化完毕")
 
@@ -74,7 +72,7 @@ class HybridAStarNode(Node):
                 response.reason = "未收到地图"
                 return response
         self.map = cast(HMap, self.map)
-        path_planner = HybridAStarPlanner(self.map, self.table_file)
+        path_planner = HybridAStarPlanner(self.map)
 
         start = MyPose2D(request.start.x, request.start.y, request.start.theta)
         goal = MyPose2D(request.goal.x, request.goal.y, request.goal.theta)

@@ -122,13 +122,13 @@ class ExplorePlanner:
                     Pose2D(sx, sy, syaw),
                     Pose2D(c.x, c.y, c.yaw),
                     C.MAX_C,
-                    step_size=A.MOTION_RESOLUTION,
+                    step_size=self.map.resolution * A.MOTION_RESOLUTION_RATIO,
                 )
                 paths_2: List[rs.RPath] = rs.calc_paths(
                     Pose2D(c.x, c.y, c.yaw),
                     Pose2D(gx, gy, gyaw),
                     C.MAX_C,
-                    step_size=A.MOTION_RESOLUTION,
+                    step_size=self.map.resolution * A.MOTION_RESOLUTION_RATIO,
                 )
                 c.cost = min(p.L for p in paths_1) + min(p.L for p in paths_2) * E.UNKOWN_PATH_PANELTY
             except:
@@ -164,8 +164,8 @@ def main():
 
     if show_animation:
         fig, ax = plt.subplots()
-        ax.scatter(start.x / A.XY_GRID_RESOLUTION, start.y / A.XY_GRID_RESOLUTION)
-        ax.scatter(goal.x / A.XY_GRID_RESOLUTION, goal.y / A.XY_GRID_RESOLUTION, marker="*")
+        ax.scatter(start.x / map.resolution, start.y / map.resolution)
+        ax.scatter(goal.x / map.resolution, goal.y / map.resolution, marker="*")
         plot_binary_map(MAP_PASSABLE, ax, visiblemask)
         plot_canPoints_map(results, ax)
         plt_tight_show()

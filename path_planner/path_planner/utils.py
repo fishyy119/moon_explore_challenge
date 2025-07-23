@@ -8,11 +8,20 @@ from numpy.typing import NDArray
 
 class Settings:
     class Car:
-        WB = 0.35  # 轴距（rear to front wheel）
-        W = 0.4  # 车轮廓宽（width of car）
-        LF = 0.6  # 后轴到前端（distance from rear to vehicle front end）
-        LB = 0.2  # 后轴到后端（distance from rear to vehicle back end）
-        MAX_STEER = 0.5  # 前轮最大转向角 [rad] maximum steering angle
+        # 轴距210mm
+        # 车轮廓宽375mm
+        # 车轴到前端310mm
+        # 车轴到后端90mm
+        # 最大转向角25°
+        # 最大转弯曲率2.22（这个和计算公式一致）
+        # ? 后轴到中心139mm
+        # ? 最小包络圆543mm
+
+        WB = 0.21  # 轴距（rear to front wheel）
+        W = 0.375  # 车轮廓宽（width of car）
+        LF = 0.31  # 后轴到前端（distance from rear to vehicle front end）
+        LB = 0.09  # 后轴到后端（distance from rear to vehicle back end）
+        MAX_STEER = np.deg2rad(25.0)  # 前轮最大转向角 [rad] (maximum steering angle)
         MAX_C = math.tan(MAX_STEER) / WB  # 最大转弯曲率 [1/m]
 
         BUBBLE_DIST = (LF - LB) / 2.0  # 后轴到中心（distance from rear to center of vehicle.）
@@ -27,11 +36,10 @@ class Settings:
         # ==============================================================================
         # 地图的相关参数
         # ==============================================================================
-        MAP_MAX_SIZE = 7  # 地图尺寸 [m] (预计算用的)
-        XY_GRID_RESOLUTION = 0.1  # 栅格分辨率 [m] (实际应用时会使用ROS消息中的分辨率)
+        XY_GRID_RESOLUTION = 0.1  # 栅格分辨率 [m] (这个只是离线测试的配置值，实际应用时会使用ROS消息中的分辨率)
         YAW_GRID_RESOLUTION = np.deg2rad(15.0)  # 节点偏航角分辨率 [rad]
-        MOTION_RESOLUTION = 0.01  # 路径积分的分辨率 [m]
-        N_STEER = 20  # 转向指令的生成数量
+        MOTION_RESOLUTION_RATIO = 0.1  # 这个比率用于计算路径的采样分辨率，此变量描述相对于地图栅格分辨率的比例
+        N_STEER = 20  # 转向指令的生成数量（节点扩展时，均匀生成20个不同角度的转向指令用于扩展节点）
         OCCUPANCY_THRESHOLD = 65  # 占据栅格地图的概率阈值，大于此值表示为障碍物
         SAFETY_MARGIN_RATIO = 1.2  # 对机器人半径额外乘安全系数
         # SAFETY_MARGIN_RATIO = 0  # 测试其他服务可用性时暂时关闭
@@ -43,7 +51,9 @@ class Settings:
         BACK_PENALTY = 5.0  # 倒车惩罚系数
         STEER_CHANGE_PENALTY = 5.0  # 转向变化惩罚系数
         STEER_PENALTY = 1.0  # 转向惩罚系数
-        H_WEIGHT = 5.0  # 启发项权重，用于在cost基础上附加启发项时
+        H_WEIGHT = 1.0  # 启发项权重，用于在cost基础上附加启发项时
+        # * H_WEIGHT是影响比较大的一个系数，在他较大时会更倾向于直奔接近终点的地方
+        # * 但是路径可能是次优的，也有可能导致规划失败
 
         # ==============================================================================
         # 解析扩张相关
@@ -52,8 +62,8 @@ class Settings:
         H_HIGH = 5.0  # 此处规定两个启发项阈值，频率在他们之间时线性递减
         H_LOW = 0.5
 
-        # * N为解析扩张频率，此处规定上下界
-        N_MAX = math.ceil((H_HIGH - H_LOW) / 10 / XY_GRID_RESOLUTION)
+        # * N为解析扩张频率(即迭代搜索轮数)，此处规定上下界
+        N_MAX = 10
         N_MIN = 1
 
         # * 在验证解析扩张得到的路径是否碰撞时，先拒绝掉代价过高的路径提高验证效率
