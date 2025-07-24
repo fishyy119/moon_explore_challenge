@@ -1,0 +1,15 @@
+name: ROS2_CI
+on:
+  workflow_dispatch: # 允许手动触发工作流
+  push:
+jobs:
+  build_and_test_ros2:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: ros-tooling/setup-ros@v0.7
+        with:
+          required-ros-distributions: humble
+      - uses: ros-tooling/action-ros-ci@v0.4
+        with:
+          package-name: path_msgs path_planner
+          target-ros2-distro: humble
