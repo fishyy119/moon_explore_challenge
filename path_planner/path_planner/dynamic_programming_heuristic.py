@@ -80,7 +80,8 @@ def calc_distance_heuristic(map: AMapProto, gx: float, gy: float):
     pq_push = heapq.heappush
 
     # 手动为四周加上障碍物（仅在此函数内部有效），优化掉循环中的越界判断
-    # TODO: 限制泛洪搜索在一个局部范围？
+    # 因此终点需要在调用端提前进行越界判断
+    # IDEA: 限制泛洪搜索在一个局部范围？
     ob_map = map.euclidean_dilated_ob_map.copy()
     ob_map[[0, -1], :] = True
     ob_map[:, [0, -1]] = True

@@ -142,6 +142,14 @@ class HMap:
             self.kdTree = cKDTree(self.kd_tree_points)
         return self.kdTree
 
+    def compute_point_distance_field(self, gx: float, gy: float) -> NDArray[np.floating]:
+        """计算到给定一点的距离场(极坐标距离值)，输入单位为m，输出单位为px"""
+        H, W = self.obstacle_map.shape
+        x, y = np.meshgrid(np.arange(W), np.arange(H))
+        dx = x - gx / self.resolution
+        dy = y - gy / self.resolution
+        return np.sqrt(dx**2 + dy**2)
+
 
 class HybridAStarPlanner:
     def __init__(self, map: HMap) -> None:
@@ -149,6 +157,31 @@ class HybridAStarPlanner:
         self.obstacle_kd_tree = map.build_kdtree()
         self.kd_tree_points = self.map.kd_tree_points
         self.hrs_table: NDArray[np.float64] | None
+
+    def find_nearest_free_position(self, sx: float, sy: float) -> None | Tuple[float, float]:
+        """
+        若起点落入了障碍物（膨胀后）中，将其弹出到最近的自由栅格，偏航不变
+        TODO: 未考虑内部有自由空间的环形障碍
+
+        Args:
+            sx (float): 起点坐标，单位为m
+            sy (float): 起点坐标，单位为m
+
+        Returns:
+            Tuple[float,float] (Optional): 弹出后xy，同样为m
+        """
+        r_map = self.map.compute_point_distance_field(sx, sy)
+        edf_map = self.map.edf_map
+        free_mask = edf_map > self.map.rr * A.SAFETY_MARGIN_RATIO  # 这里要和HMap中的障碍物膨胀阈值保持一致
+        masked_r_map = np.where(free_mask, r_map, np.inf)
+        iy, ix = np.unravel_index(np.argmin(masked_r_map), masked_r_map.shape)
+
+        # 拒绝弹出的过远的场景
+        min_dist = masked_r_map[iy, ix] * self.map.resolution  # 换成米为单位，方便阈值判断
+        if min_dist > A.MAX_POP_OUT_DISTANCE_RATIO * self.map.rr:
+            return None
+
+        return float(ix * self.map.resolution), float(iy * self.map.resolution)
 
     def planning(self, start: Pose2D, goal: Pose2D) -> Tuple[None | HPath, str]:
         """
@@ -186,7 +219,12 @@ class HybridAStarPlanner:
                 f"输入坐标不在地图范围内：({start.x}, {start.y}) -> ({sx}, {sy}), ({goal.x}, {goal.y}) -> ({gx}, {gy})",
             )
 
-        # TODO: 起点在障碍物（膨胀后障碍物）里怎么办？
+        if self.map.euclidean_dilated_ob_map[sidx[1], sidx[0]]:
+            new_xy = self.find_nearest_free_position(sx, sy)
+            if new_xy is None:
+                return None, "起点在障碍物中，且弹出失败"
+            sx, sy = new_xy
+            sidx = self.map.world_to_map(sx, sy, syaw)
 
         start_node = HNode(
             *sidx,
@@ -619,6 +657,7 @@ def main():
     if not S.Debug.test_sim_origin:
         sim_origin = Pose2D(0, 0, 0)
         start = Pose2D(40.0, 10.0, 90.0, deg=True)
+        start = Pose2D(44.0, 8.0, 90.0, deg=True)
         goal = Pose2D(45.0, 35.1, 180.0, deg=True)
         # start = Pose2D(-40.0, 10.0, 90.0, deg=True)
         # goal = Pose2D(45.0, -35, 180.0, deg=True)

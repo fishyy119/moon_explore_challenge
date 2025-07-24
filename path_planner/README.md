@@ -35,7 +35,7 @@
 ## 文件说明
 
 - **ROS 节点文件**
-  - `path_planner_node.py`：路径规划与探索规划的服务节点
+  - `path_planner_node.py`：**路径规划**与**探索规划**的服务节点
   
   - `hpath_viz_node.py`：路径可视化辅助节点
 
@@ -44,7 +44,7 @@
 - **核心功能模块**
   - `hybrid_a_star_planner.py`：路径规划算法的**主入口**
 
-  - `exploration_planner.py`：探索规划的主入口
+  - `exploration_planner.py`：探索规划的**主入口**
 
   - `utils.py`：辅助功能模块，包含**配置项类 `Settings`**，每项配置均附有注释说明
 

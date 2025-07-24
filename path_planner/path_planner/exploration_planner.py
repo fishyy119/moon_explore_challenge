@@ -45,14 +45,8 @@ class ExplorePlanner:
         base_radius = start - goal
         radius_list = [base_radius * r / self.map.resolution for r in E.R_RATIO_LIST]
 
-        # 创建坐标网格并计算极坐标
-        H, W = self.dilated_ob_map.shape
-        x, y = np.meshgrid(np.arange(W), np.arange(H))
-        dx = x - gx / self.map.resolution
-        dy = y - gy / self.map.resolution
-        r_map = np.sqrt(dx**2 + dy**2)
-
         # 生成每个圆环区域的 bool 掩码二维数组
+        r_map = self.map.compute_point_distance_field(gx, gy)
         region_bounds = zip(radius_list[:-1], radius_list[1:])
         region_masks = [(r_map >= inner) & (r_map < outer) & (~self.dilated_ob_map) for inner, outer in region_bounds]
         region_areas = [
