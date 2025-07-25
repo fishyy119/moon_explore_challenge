@@ -96,6 +96,8 @@ class Settings:
         # 计算不考虑障碍的rs路径长度作为代价
         # 由已知段（起点到候选点）与未知段（候选点到终点）组成，此处对未知段长度惩罚
         UNKOWN_PATH_PANELTY = 2
+        # 采样数量相对于期望采样数的比例（因为随机采样后要根据障碍物拒绝，所以要大一些）
+        SAMPLER_RATIO = 50
 
     class Debug:
         use_profile = True

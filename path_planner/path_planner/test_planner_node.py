@@ -23,6 +23,7 @@ class TestPlannerNode(Node):
             Path(get_package_share_directory("path_planner")) / "resource/map_raw.txt"
         )
         self.map_pub.publish(self.map_msg)
+        print(self.map_msg.info)
         self.get_logger().info("已发布地图")
 
         # Step 2: 创建客户端

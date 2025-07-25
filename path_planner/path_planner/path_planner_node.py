@@ -5,16 +5,15 @@ import numpy as np
 import rclpy
 from geometry_msgs.msg import Pose2D
 from nav_msgs.msg import OccupancyGrid
-from path_msgs.msg._candidate_pose2_d import CandidatePose2D
-from rclpy.node import Node
-from std_msgs.msg import Header
-
+from path_msgs.msg import CandidatePose2D
 from path_msgs.msg import HPath as HPathROS
 from path_msgs.srv import ExplorePlanning, PathPlanning
 from path_planner.exploration_planner import ExplorePlanner
 from path_planner.hybrid_a_star_planner import HMap, HPath, HybridAStarPlanner
 from path_planner.utils import A
 from path_planner.utils import Pose2D as MyPose2D
+from rclpy.node import Node
+from std_msgs.msg import Header
 
 # from scipy.spatial.transform import Rotation as R
 

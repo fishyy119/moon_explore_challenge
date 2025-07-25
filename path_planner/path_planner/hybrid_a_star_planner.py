@@ -216,7 +216,7 @@ class HybridAStarPlanner:
         ):
             return (
                 None,
-                f"输入坐标不在地图范围内：({start.x}, {start.y}) -> ({sx}, {sy}), ({goal.x}, {goal.y}) -> ({gx}, {gy})",
+                f"输入坐标不在地图范围内：({start.x}, {start.y}) -> ({sidx[0]}, {sidx[1]}), ({goal.x}, {goal.y}) -> ({gidx[0]}, {gidx[1]})",
             )
 
         if self.map.euclidean_dilated_ob_map[sidx[1], sidx[0]]:

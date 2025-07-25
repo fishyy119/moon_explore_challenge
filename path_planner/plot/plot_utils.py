@@ -8,9 +8,9 @@ import matplotlib.colors as mcolors
 import matplotlib.patches as mpatches
 import matplotlib.patches as patches
 import matplotlib.patheffects as pe
-import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib import cm
+from matplotlib import pyplot as plt
 from matplotlib.axes import Axes
 from matplotlib.collections import LineCollection
 from matplotlib.colors import Normalize
@@ -34,9 +34,13 @@ plt.rcParams["font.family"] = ["Times New Roman", "SimSun"]
 # plt.rcParams["mathtext.bf"] = "Times New Roman:bold"  # 数学粗体
 plt.rcParams.update({"axes.labelsize": 10.5, "xtick.labelsize": 10.5, "ytick.labelsize": 10.5})
 
-NPY_ROOT = Path(__file__).parent.parent / "resource"
-MAP_PASSABLE = np.load(NPY_ROOT / "map_passable.npy")
-MAP_EDF: NDArray[np.float64] = distance_transform_edt(~MAP_PASSABLE) / 10  # type: ignore
+try:
+    NPY_ROOT = Path(__file__).parent.parent / "resource"
+    MAP_PASSABLE = np.load(NPY_ROOT / "map_passable.npy")
+    MAP_EDF: NDArray[np.float64] = distance_transform_edt(~MAP_PASSABLE) / 10  # type: ignore
+except:
+    print("plot_utils未加载资源文件")
+    pass
 
 
 def ax_remove_axis(ax: Axes) -> None:
@@ -320,13 +324,10 @@ from path_planner.utils import Pose2D, Settings
 
 
 def plot_pose2d_map(
-    pose: Pose2D,
-    ax: Axes,
-    color: ColorType,
-    scale: int = 20,
+    pose: Pose2D, ax: Axes, color: ColorType, scale: int = 20, resolution: float = Settings.A.XY_GRID_RESOLUTION
 ) -> None:
-    x = pose.x / Settings.A.XY_GRID_RESOLUTION
-    y = pose.y / Settings.A.XY_GRID_RESOLUTION
+    x = pose.x / resolution
+    y = pose.y / resolution
     yaw = pose.yaw_rad
 
     # 为了让线段变得不显眼
@@ -360,7 +361,9 @@ def plot_arrow(x, y, yaw, length=1.0, width=0.5, fc="r", ec="k"):
         plt.plot(x, y)
 
 
-def plot_canPoints_map(canPoints: List[Tuple[Pose2D, float]], ax: Axes):
+def plot_canPoints_map(
+    canPoints: List[Tuple[Pose2D, float]], ax: Axes, resolution: float = Settings.A.XY_GRID_RESOLUTION
+):
     # 将分数映射为颜色
     cmap = cm.get_cmap("viridis")
     scores = [s for p, s in canPoints]
@@ -368,7 +371,7 @@ def plot_canPoints_map(canPoints: List[Tuple[Pose2D, float]], ax: Axes):
     norm = Normalize(vmin=min_score, vmax=max_score)
     for point, score in canPoints:
         rgba_color = cmap(norm(score))
-        plot_pose2d_map(point, ax=ax, color=rgba_color, scale=15)
+        plot_pose2d_map(point, ax=ax, color=rgba_color, scale=15, resolution=resolution)
 
     # 创建伪图像对象以生成 colorbar
     sm = cm.ScalarMappable(cmap=cmap, norm=norm)

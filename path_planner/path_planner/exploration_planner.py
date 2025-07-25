@@ -58,6 +58,10 @@ class ExplorePlanner:
         # *利用低差异序列Halton采样，尽量保证均匀，该采样在0~1矩形中采样，映射到采样区域后根据可通行区域进行拒绝
         total_area = sum(region_areas)
         sample_results: List[CandidatePose] = []
+        if total_area <= 1:
+            print("未找到自由空间用于采样")
+            return []
+
         # 终点可达的情况下，终点也添加进去
         gx_px = round(gy / self.map.resolution)
         gy_px = round(gx / self.map.resolution)
@@ -68,45 +72,55 @@ class ExplorePlanner:
             if not self.dilated_ob_map[gy_px, gx_px]:
                 sample_results.append(CandidatePose(gx, gy, gyaw, is_goal=True))
 
-        if total_area > 0:
-            sample_nums = [ceil(E.SUM_SAMPLE_NUM * a / total_area) for a in region_areas]
+        sample_nums = [ceil(E.SUM_SAMPLE_NUM * a / total_area) for a in region_areas]
 
-            total_required = sum(sample_nums)
-            sampler = qmc.Halton(d=2, scramble=False)
-            halton_points = sampler.random(n=total_required * 20)  # 多取一些以防止不落入区域内
-            counts = [0 for _ in sample_nums]
+        total_required = sum(sample_nums)
+        sampler = qmc.Halton(d=2, scramble=False)
+        # 多取一些以防止不落入区域内，此处采样开销不大，应该无需分批次采样
+        halton_points = sampler.random(n=total_required * E.SAMPLER_RATIO)
+        counts = [0 for _ in sample_nums]
 
-            for u, v in halton_points:
-                # 归一化的采样局部窗口 映射到 地图像素坐标系
+        # 采样是在归一化的单位窗口中，根据局部窗口相对于全部地图的尺寸，选择两种不同的映射
+        # 1.直接向全部地图映射，适用于几乎横跨地图的情况
+        # 2.向局部窗口（起点到终点的画圆，局部窗口就是外包的正方形），适用于局部窗口较小的情况
+        if 2 * base_radius * max(E.R_RATIO_LIST) * 1.5 / self.map.resolution > min(self.dilated_ob_map.shape):
+            map_method = 1
+        else:
+            map_method = 2
+
+        for u, v in halton_points:
+            # 归一化的采样窗口 映射到 地图像素坐标系
+            if map_method == 1:
+                x_px = int(u * self.map.max_x_index)
+                y_px = int(v * self.map.max_y_index)
+            else:
                 # 貌似太靠近边缘采样效果不好，所以并不是严格的局部窗口，有1.5倍的扩张
                 x_px = int(((u - 0.5) * base_radius * max(E.R_RATIO_LIST) * 1.5 + gx) / self.map.resolution)
                 y_px = int(((v - 0.5) * base_radius * max(E.R_RATIO_LIST) * 1.5 + gy) / self.map.resolution)
 
-                if not (
-                    self.map.min_x_index <= x_px < self.map.max_x_index
-                    and self.map.min_y_index <= y_px < self.map.max_y_index
-                ):
+            if not (
+                self.map.min_x_index <= x_px < self.map.max_x_index
+                and self.map.min_y_index <= y_px < self.map.max_y_index
+            ):
+                continue
+            if self.dilated_ob_map[y_px, x_px]:
+                continue
+
+            for region_idx, (mask, max_count) in enumerate(zip(region_masks, sample_nums)):
+                if counts[region_idx] >= max_count:
                     continue
-                if self.dilated_ob_map[y_px, x_px]:
-                    continue
 
-                for region_idx, (mask, max_count) in enumerate(zip(region_masks, sample_nums)):
-                    if counts[region_idx] >= max_count:
-                        continue
+                if mask[y_px, x_px]:
+                    # 记录：将像素坐标转换为世界坐标
+                    x = x_px * self.map.resolution
+                    y = y_px * self.map.resolution
+                    theta = np.arctan2(gy - y, gx - x)
+                    sample_results.append(CandidatePose(x, y, theta))
+                    counts[region_idx] += 1
+                    break  # 一个点只能算进一个区域
 
-                    if mask[y_px, x_px]:
-                        # 记录：将像素坐标转换为世界坐标
-                        x = x_px * self.map.resolution
-                        y = y_px * self.map.resolution
-                        theta = np.arctan2(gy - y, gx - x)
-                        sample_results.append(CandidatePose(x, y, theta))
-                        counts[region_idx] += 1
-                        break  # 一个点只能算进一个区域
-
-                if sum(counts) >= total_required:
-                    break
-        else:
-            print("未找到自由空间用于采样")
+            if sum(counts) >= total_required:
+                break
 
         # * 3.计算代价
         # *计算不考虑障碍的rs路径长度作为代价，由已知段（起点到候选点）与未知段（候选点到终点）组成，对未知段长度惩罚
