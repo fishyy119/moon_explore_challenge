@@ -253,6 +253,12 @@ def plot_path_curvature_map(path: "HPath", ax: Axes):
     )
 
 
+def plot_path_map(path: "HPath", ax: Axes):
+    x = np.array(path.x_list)
+    y = np.array(path.y_list)
+    ax.plot(x * 10, y * 10)
+
+
 def plot_binary_map(map: NDArray[np.bool_], ax: Axes, visible_map: NDArray[np.bool_] | None = None, alpha: float = 1):
     map_matrix = np.full_like(map, 0, dtype=int)  # 默认全部设为已知知区域 (0)
     map_matrix[map] = 1  # 障碍物区域 1
@@ -362,7 +368,7 @@ def plot_arrow(x, y, yaw, length=1.0, width=0.5, fc="r", ec="k"):
 
 
 def plot_canPoints_map(
-    canPoints: List[Tuple[Pose2D, float]], ax: Axes, resolution: float = Settings.A.XY_GRID_RESOLUTION
+    canPoints: List[Tuple[Pose2D, float]], ax: Axes, resolution: float = Settings.A.XY_GRID_RESOLUTION, scale: int = 15
 ):
     # 将分数映射为颜色
     cmap = cm.get_cmap("viridis")
@@ -371,7 +377,7 @@ def plot_canPoints_map(
     norm = Normalize(vmin=min_score, vmax=max_score)
     for point, score in canPoints:
         rgba_color = cmap(norm(score))
-        plot_pose2d_map(point, ax=ax, color=rgba_color, scale=15, resolution=resolution)
+        plot_pose2d_map(point, ax=ax, color=rgba_color, scale=scale, resolution=resolution)
 
     # 创建伪图像对象以生成 colorbar
     sm = cm.ScalarMappable(cmap=cmap, norm=norm)
@@ -382,7 +388,7 @@ def plot_canPoints_map(
     # cb = ax.figure.colorbar(sm, cax=cax)  # type: ignore
 
     cb = ax.figure.colorbar(sm, cax=cax, orientation="vertical")  # type: ignore
-    cb.ax.set_title("评分", fontsize=10.5, pad=5)
+    cb.ax.set_title("代价", fontsize=10.5, pad=5)
     # cb.ax.yaxis.set_tick_params(labelsize=10)
     for label in cb.ax.get_yticklabels():
         label.set_fontname("Times New Roman")
