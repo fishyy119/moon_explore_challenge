@@ -2,7 +2,7 @@
 <?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
 <package format="3">
   <name>path_msgs</name>
-  <version>0.20250725.1</version>
+  <version>0.20250815.1</version>
   <description>路径规划相关的ROS信息与服务</description>
   <maintainer email="1830979240@qq.com">yyy</maintainer>
   <license>MIT</license>

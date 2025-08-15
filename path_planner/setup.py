@@ -15,7 +15,7 @@ data_files.append(("share/" + package_name, ["package.xml"]))
 
 setup(
     name=package_name,
-    version="0.20250725.1",
+    version="0.20250815.1",
     packages=find_packages(exclude=["test"]),
     data_files=data_files,
     install_requires=["setuptools"],
