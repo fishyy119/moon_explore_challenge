@@ -1,0 +1,20 @@
+# GenerateTemplatePath.srv
+
+string mode           # 'forward', 'circle', 'figure8'
+
+# 起点位姿，用于对齐
+geometry_msgs/Pose2D start_pose
+
+# 前进/后退距离，后退为负数（对 forward 有效）
+float64 distance
+
+# 圆弧半径，正值左转，负值右转（对 circle / figure8 有效）
+float64 radius
+
+# 圆弧角度（弧度制），正值逆时针，负值顺时针（对 circle 有效）
+float64 arc_angle
+
+# 路径分辨率[m]
+float64 step
+---
+HPath path

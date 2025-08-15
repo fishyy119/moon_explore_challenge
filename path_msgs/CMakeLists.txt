@@ -1,7 +1,9 @@
 cmake_minimum_required(VERSION 3.10)
+
 if(POLICY CMP0148)
   cmake_policy(SET CMP0148 OLD)
 endif()
+
 project(path_msgs)
 
 find_package(ament_cmake REQUIRED)
@@ -14,6 +16,7 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   "msg/CandidatePose2D.msg"
   "srv/PathPlanning.srv"
   "srv/ExplorePlanning.srv"
+  "srv/GenerateTemplatePath.srv"
   DEPENDENCIES geometry_msgs
 )
 

@@ -1,4 +1,3 @@
-from pathlib import Path
 from typing import cast
 
 import numpy as np
@@ -7,10 +6,16 @@ from geometry_msgs.msg import Pose2D
 from nav_msgs.msg import OccupancyGrid
 from path_msgs.msg import CandidatePose2D
 from path_msgs.msg import HPath as HPathROS
-from path_msgs.srv import ExplorePlanning, PathPlanning
+from path_msgs.srv import ExplorePlanning, GenerateTemplatePath, PathPlanning
 from path_planner.exploration_planner import ExplorePlanner
-from path_planner.hybrid_a_star_planner import HMap, HPath, HybridAStarPlanner
-from path_planner.utils import A
+from path_planner.hybrid_a_star_path import (
+    HPath,
+    generate_circle_path,
+    generate_figure8_path,
+    generate_forward_path,
+)
+from path_planner.hybrid_a_star_planner import HMap, HybridAStarPlanner
+from path_planner.utils import A, C
 from path_planner.utils import Pose2D as MyPose2D
 from rclpy.node import Node
 from std_msgs.msg import Header
@@ -29,12 +34,45 @@ class HybridAStarNode(Node):
         # 规划服务
         self.planning_srv = self.create_service(PathPlanning, "path_planning", self.handle_plan_path)
         self.explore_srv = self.create_service(ExplorePlanning, "explore_planning", self.handle_explore_plan)
+        self.template_srv = self.create_service(
+            GenerateTemplatePath, "generate_template_path", self.handle_template_path
+        )
 
         self.map_msg = None
         self.map = None
         self.path_planner = None
 
         self.INFO("路径规划器初始化完毕")
+
+    def handle_template_path(self, request: GenerateTemplatePath.Request, response: GenerateTemplatePath.Response):
+        # 将 geometry_msgs/Pose2D 转为你的自定义 Pose2D
+        start_pose = MyPose2D(x=request.start_pose.x, y=request.start_pose.y, yaw=request.start_pose.theta)
+
+        # 参数校验
+        MIN_RADIUS = 1 / C.MAX_C  # 半径最小值
+
+        # 根据 mode 调用对应模板函数
+        if request.mode == "forward":
+            hpath = generate_forward_path(start_pose, distance=request.distance, step=request.step)
+        elif request.mode == "circle":
+            radius = request.radius
+            if radius <= MIN_RADIUS:
+                self.WARN(f"半径{request.radius}过小，使用{MIN_RADIUS}")
+                radius = MIN_RADIUS
+            hpath = generate_circle_path(start_pose, radius=radius, arc_angle=request.arc_angle, step=request.step)
+        elif request.mode == "figure8":
+            hpath = generate_figure8_path(start_pose, radius=request.radius, step=request.step)
+        else:
+            self.WARN(f"未知模式 '{request.mode}', 使用默认值 forward")
+            hpath = generate_forward_path(start_pose, distance=request.distance, step=request.step)
+
+        # 将 HPath 转为 ROS2 消息
+        path_msg = self.convert_to_hpath_msg(hpath)
+        response.path = path_msg  # 路径放响应中
+        self.path_pub.publish(path_msg)
+        self.INFO("发布路径")
+
+        return response
 
     def generate_hmap(self) -> bool:
         if self.map_msg is None:

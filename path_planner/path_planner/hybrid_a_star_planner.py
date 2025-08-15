@@ -17,6 +17,7 @@ from typing import Dict, Generator, List, Set, Tuple, cast
 import numpy as np
 import rs_planning as rs
 from dynamic_programming_heuristic import ANodeProto, calc_distance_heuristic
+from hybrid_a_star_path import HPath
 from numpy.typing import NDArray
 from scipy.ndimage import distance_transform_edt
 from scipy.spatial import cKDTree
@@ -39,17 +40,6 @@ class HNode:
 
     def __repr__(self):
         return f"Node({self.x_index},{self.y_index},{self.yaw_index})"
-
-
-class HPath:
-    def __init__(
-        self, x_list: List[float], y_list: List[float], yaw_list: List[float], direction_list: List[bool], cost: float
-    ):
-        self.x_list = x_list
-        self.y_list = y_list
-        self.yaw_list = yaw_list
-        self.direction_list = direction_list
-        self.cost = cost
 
 
 class HMap:
