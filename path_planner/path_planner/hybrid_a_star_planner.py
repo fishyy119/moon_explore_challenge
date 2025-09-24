@@ -10,135 +10,17 @@ and: me
 import heapq
 import math
 from dataclasses import dataclass
-from math import atan2, cos, pi, sin, tan
+from math import cos, pi, sin, tan
 from pathlib import Path as fPath
 from typing import Dict, Generator, List, Set, Tuple, cast
 
 import numpy as np
 import rs_planning as rs
 from dynamic_programming_heuristic import ANodeProto, calc_distance_heuristic
+from hybrid_a_star_map import HMap, HNode
 from hybrid_a_star_path import HPath
 from numpy.typing import NDArray
-from scipy.ndimage import distance_transform_edt
-from scipy.spatial import cKDTree
 from utils import A, C, Pose2D, S
-
-
-@dataclass
-class HNode:
-    x_index: int
-    y_index: int
-    yaw_index: int
-    direction: bool
-    x_list: List[float]
-    y_list: List[float]
-    yaw_list: List[float]
-    directions: List[bool]
-    steer: float = 0.0
-    parent_index: int | None = None
-    cost: float = 0
-
-    def __repr__(self):
-        return f"Node({self.x_index},{self.y_index},{self.yaw_index})"
-
-
-class HMap:
-    """
-    * 内部地图栅格坐标系：
-    使用numpy二维数组存储地图，考虑一个正常的矩阵写法，
-    右上角[0,0]定为原点，x轴指向右方，y轴指向下方 (ROS的地图消息好像也是这个坐标系)，
-    因此在提取某一坐标处地图信息时，需要使用map[y,x]的形式进行索引
-    存在两套数值体系，int的栅格索引和float的连续坐标，原点相同
-
-    * 与系统整体的地图坐标系的转换：
-    类内部处理使用前述栅格坐标系，因此在在接收其他模块输入输出时，需要额外进行SE2转换
-    TODO: 需要确认这个xy颠倒ROS信息是怎么表示
-    """
-
-    def __init__(
-        self,
-        ob_map: NDArray[np.bool_],
-        resolution: float = A.XY_GRID_RESOLUTION,
-        yaw_resolution: float = A.YAW_GRID_RESOLUTION,
-        rr: float = C.BUBBLE_R,
-        origin: Pose2D = Pose2D(0, 0, 0),
-    ) -> None:
-        """
-        Args:
-            ob_map (NDArray[np.bool_]): 二维数组，True表示有障碍物
-            resolution (float, optional): 地图分辨率 [m]
-            yaw_resolution (float): 偏航角的分辨率 [rad]
-            rr (float, optional): 巡视器安全班级 [m]
-            origin (float, optional): 接收到的地图中00栅格相对于地图坐标系的位姿
-        """
-        self.obstacle_map = ob_map
-        self.kdTree: cKDTree | None = None
-        self.resolution = resolution
-        self.yaw_resolution = yaw_resolution
-        self.rr = rr
-        self.edf_map: NDArray[np.float64] = distance_transform_edt(~ob_map) * resolution  # [m] # type: ignore
-        self.euclidean_dilated_ob_map: NDArray[np.bool_] = self.edf_map <= rr * A.SAFETY_MARGIN_RATIO  # 根据半径膨胀
-
-        # 地图参数
-        self.max_y_index, self.max_x_index = self.obstacle_map.shape  # 先y后x
-        self.min_x_index, self.min_y_index = 0, 0
-        self.x_width, self.y_width = self.obstacle_map.shape
-        self.min_yaw_index = round(-pi / yaw_resolution) - 1
-        self.max_yaw_index = round(pi / yaw_resolution)
-        self.yaw_w = round(self.max_yaw_index - self.min_yaw_index)
-
-        # 输入输出要加这个转换
-        #! 仅考虑了平移，未对旋转加以测试
-        self.origin_pose = origin
-        self.SE2 = origin.SE2  # 内部 -> 外部
-        self.SE2inv = origin.SE2inv  # 外部 -> 内部
-        self.map_yaw = origin.yaw_rad  # 内部 -> 外部（加的话）
-
-    @classmethod
-    def from_file(cls, file: str | fPath):
-        map = np.load(file)
-        return cls(map)
-
-    def verify_index(self, node: HNode):
-        x_ind, y_ind = node.x_index, node.y_index
-        if self.min_x_index <= x_ind <= self.max_x_index and self.min_y_index <= y_ind <= self.max_y_index:
-            return True
-        return False
-
-    def calc_index(self, node: HNode):
-        "计算扁平化的索引"
-        return (
-            (node.yaw_index - self.min_yaw_index) * self.x_width * self.y_width
-            + (node.y_index - self.min_y_index) * self.x_width
-            + (node.x_index - self.min_x_index)
-        )
-
-    def calc_index_2d(self, node: ANodeProto) -> int:
-        "计算扁平化的索引，只考虑xy，A*启发项需要用这个索引"
-        return (node.y_index - self.min_y_index) * self.x_width + (node.x_index - self.min_x_index)
-
-    def world_to_map(self, x: float, y: float, yaw: float) -> Tuple[int, int, int]:
-        return round(x / self.resolution), round(y / self.resolution), round(yaw / self.yaw_resolution)
-
-    def world_to_map_2d(self, x: float, y: float) -> Tuple[int, int]:
-        return round(x / self.resolution), round(y / self.resolution)
-
-    def build_kdtree(self) -> cKDTree:
-        """从 obstacle_map 中提取障碍物坐标，并构建 KDTree"""
-        if self.kdTree is None:
-            obstacle_indices = np.argwhere(self.obstacle_map)  # shape (N, 2)
-            self.kd_tree_points = obstacle_indices * self.resolution  # 将地图索引转换为世界坐标（米）
-            self.kd_tree_points = self.kd_tree_points[:, [1, 0]]  # 地图的索引是yx顺序的，进行交换
-            self.kdTree = cKDTree(self.kd_tree_points)
-        return self.kdTree
-
-    def compute_point_distance_field(self, gx: float, gy: float) -> NDArray[np.floating]:
-        """计算到给定一点的距离场(极坐标距离值)，输入单位为m，输出单位为px"""
-        H, W = self.obstacle_map.shape
-        x, y = np.meshgrid(np.arange(W), np.arange(H))
-        dx = x - gx / self.resolution
-        dy = y - gy / self.resolution
-        return np.sqrt(dx**2 + dy**2)
 
 
 class HybridAStarPlanner:
@@ -583,61 +465,61 @@ class HybridAStarPlanner:
 
         return path
 
-    def smooth_path(self, path: HPath) -> HPath:
-        #! 还没调好，可能不会用
-        x = np.array(path.x_list)
-        y = np.array(path.y_list)
-        orig_x = np.copy(x)
-        orig_y = np.copy(y)
+    # def smooth_path(self, path: HPath) -> HPath:
+    #     #! 还没调好，可能不会用
+    #     x = np.array(path.x_list)
+    #     y = np.array(path.y_list)
+    #     orig_x = np.copy(x)
+    #     orig_y = np.copy(y)
 
-        distance_map = self.map.edf_map
-        H, W = distance_map.shape
+    #     distance_map = self.map.edf_map
+    #     H, W = distance_map.shape
 
-        for _ in range(A.ITERATIONS):
-            for i in range(1, len(x) - 1):  # skip endpoints
-                # Smoothness term
-                dx_s = x[i - 1] - 2 * x[i] + x[i + 1]
-                dy_s = y[i - 1] - 2 * y[i] + y[i + 1]
+    #     for _ in range(A.ITERATIONS):
+    #         for i in range(1, len(x) - 1):  # skip endpoints
+    #             # Smoothness term
+    #             dx_s = x[i - 1] - 2 * x[i] + x[i + 1]
+    #             dy_s = y[i - 1] - 2 * y[i] + y[i + 1]
 
-                # Fidelity term
-                dx_f = orig_x[i] - x[i]
-                dy_f = orig_y[i] - y[i]
+    #             # Fidelity term
+    #             dx_f = orig_x[i] - x[i]
+    #             dy_f = orig_y[i] - y[i]
 
-                # Obstacle term
-                mx, my = self.map.world_to_map_2d(x[i], y[i])
-                if 0 <= mx < W and 0 <= my < H:
-                    d = distance_map[my, mx]
-                    grad_obs = np.exp(-d / A.OBSTACLE_SIGMA) / (A.OBSTACLE_SIGMA + 1e-6)
-                    # approximate gradient direction away from obstacle
-                    gx = (distance_map[my, min(mx + 1, W - 1)] - distance_map[my, max(mx - 1, 0)]) / 2
-                    gy = (distance_map[min(my + 1, H - 1), mx] - distance_map[max(my - 1, 0), mx]) / 2
-                    dx_o = -grad_obs * gx
-                    dy_o = -grad_obs * gy
-                else:
-                    dx_o = dy_o = 0.0
+    #             # Obstacle term
+    #             mx, my = self.map.world_to_map_2d(x[i], y[i])
+    #             if 0 <= mx < W and 0 <= my < H:
+    #                 d = distance_map[my, mx]
+    #                 grad_obs = np.exp(-d / A.OBSTACLE_SIGMA) / (A.OBSTACLE_SIGMA + 1e-6)
+    #                 # approximate gradient direction away from obstacle
+    #                 gx = (distance_map[my, min(mx + 1, W - 1)] - distance_map[my, max(mx - 1, 0)]) / 2
+    #                 gy = (distance_map[min(my + 1, H - 1), mx] - distance_map[max(my - 1, 0), mx]) / 2
+    #                 dx_o = -grad_obs * gx
+    #                 dy_o = -grad_obs * gy
+    #             else:
+    #                 dx_o = dy_o = 0.0
 
-                # Total gradient
-                dx = A.WEIGHT_SMOOTH * dx_s + A.WEIGHT_FIDELITY * dx_f + A.WEIGHT_OBSTACLE * dx_o
-                dy = A.WEIGHT_SMOOTH * dy_s + A.WEIGHT_FIDELITY * dy_f + A.WEIGHT_OBSTACLE * dy_o
+    #             # Total gradient
+    #             dx = A.WEIGHT_SMOOTH * dx_s + A.WEIGHT_FIDELITY * dx_f + A.WEIGHT_OBSTACLE * dx_o
+    #             dy = A.WEIGHT_SMOOTH * dy_s + A.WEIGHT_FIDELITY * dy_f + A.WEIGHT_OBSTACLE * dy_o
 
-                x[i] += A.LEARN_RATE * dx
-                y[i] += A.LEARN_RATE * dy
+    #             x[i] += A.LEARN_RATE * dx
+    #             y[i] += A.LEARN_RATE * dy
 
-        # Recalculate yaw and direction
-        new_yaw = []
-        new_dir = []
-        for i in range(len(x) - 1):
-            dx = x[i + 1] - x[i]
-            dy = y[i + 1] - y[i]
-            new_yaw.append(atan2(dy, dx))
-            new_dir.append(True)  # assume forward; refine if needed
-        new_yaw.append(new_yaw[-1])
-        new_dir.append(new_dir[-1])
+    #     # Recalculate yaw and direction
+    #     new_yaw = []
+    #     new_dir = []
+    #     for i in range(len(x) - 1):
+    #         dx = x[i + 1] - x[i]
+    #         dy = y[i + 1] - y[i]
+    #         new_yaw.append(atan2(dy, dx))
+    #         new_dir.append(True)  # assume forward; refine if needed
+    #     new_yaw.append(new_yaw[-1])
+    #     new_dir.append(new_dir[-1])
 
-        # Compute new cost (approximate length)
-        cost = np.sum(np.hypot(np.diff(x), np.diff(y)))
+    #     # Compute new cost (approximate length)
+    #     cost = np.sum(np.hypot(np.diff(x), np.diff(y)))
 
-        return HPath(x.tolist(), y.tolist(), new_yaw, new_dir, cost)
+    #     return HPath(x.tolist(), y.tolist(), new_yaw, new_dir, cost)
 
 
 def main():

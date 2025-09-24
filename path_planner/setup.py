@@ -27,9 +27,9 @@ setup(
     tests_require=["pytest"],
     entry_points={
         "console_scripts": [
-            "path_planner_node = path_planner.path_planner_node:main",
-            "hpath_viz_node = path_planner.hpath_viz_node:main",
-            "test_planner_node = path_planner.test_planner_node:main",
+            "path_planner_node = path_planner.node.path_planner_node:main",
+            "hpath_viz_node = path_planner.node.hpath_viz_node:main",
+            "test_planner_node = path_planner.node.test_planner_node:main",
         ],
     },
 )
