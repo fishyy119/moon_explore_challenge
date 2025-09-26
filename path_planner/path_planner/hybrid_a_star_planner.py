@@ -289,9 +289,9 @@ class HybridAStarPlanner:
 
     def check_car_collision(
         self,
-        x_list: NDArray[np.float64],
-        y_list: NDArray[np.float64],
-        yaw_list: NDArray[np.float64],
+        x_list: NDArray[np.floating],
+        y_list: NDArray[np.floating],
+        yaw_list: NDArray[np.floating],
     ) -> bool:
         # 路径分辨率小于网格分辨率，减少冗余计算
         sparse_idx = np.arange(0, len(x_list), 4)
@@ -529,7 +529,7 @@ def main():
     if not S.Debug.test_sim_origin:
         sim_origin = Pose2D(0, 0, 0)
         start = Pose2D(40.0, 10.0, 90.0, deg=True)
-        start = Pose2D(44.0, 8.0, 90.0, deg=True)
+        # start = Pose2D(44.0, 8.0, 90.0, deg=True)
         goal = Pose2D(45.0, 35.1, 180.0, deg=True)
         # start = Pose2D(-40.0, 10.0, 90.0, deg=True)
         # goal = Pose2D(45.0, -35, 180.0, deg=True)
@@ -543,7 +543,7 @@ def main():
     print("goal : ", goal)
     print("max curvature : ", C.MAX_C)
 
-    map = HMap(MAP_PASSABLE, origin=sim_origin)
+    map = HMap(MAP_DEM, origin=sim_origin)
     planner = HybridAStarPlanner(map)
     path, message = planner.planning(start, goal)
     if path is None:
@@ -555,7 +555,7 @@ def main():
     if show_animation:
         fig, ax = plt.subplots()
         plot_path_curvature_map(path, ax)
-        plot_binary_map(MAP_PASSABLE, ax)
+        plot_binary_map(map.obstacle_map, ax)
         plt_tight_show()
 
     print(__file__ + " done!!")
@@ -574,7 +574,7 @@ if __name__ == "__main__":
     import matplotlib.pyplot as plt
     from line_profiler import LineProfiler
     from plot.plot_utils import (
-        MAP_PASSABLE,
+        MAP_DEM,
         plot_binary_map,
         plot_path_curvature_map,
         plt_tight_show,

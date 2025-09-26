@@ -37,6 +37,7 @@ plt.rcParams.update({"axes.labelsize": 10.5, "xtick.labelsize": 10.5, "ytick.lab
 try:
     NPY_ROOT = Path(__file__).parent.parent / "resource"
     MAP_PASSABLE = np.load(NPY_ROOT / "map_passable.npy")
+    MAP_DEM = np.load(NPY_ROOT / "map_truth.npy").T
     MAP_EDF: NDArray[np.float64] = distance_transform_edt(~MAP_PASSABLE) / 10  # type: ignore
 except:
     print("plot_utils未加载资源文件")

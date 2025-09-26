@@ -26,6 +26,7 @@ class Settings:
 
         BUBBLE_DIST = (LF - LB) / 2.0  # 后轴到中心（distance from rear to center of vehicle.）
         BUBBLE_R = np.hypot((LF + LB) / 2.0, W / 2.0)  # 车辆半径，以中心为圆心绘制最小包络圆形
+        MAX_PASSABLE_SLOPE = 20  # [deg] 最大通行坡度
 
         # 这个只是画图用的，主函数里没用到
         # 此处能发现路径的参考点是车辆后轴中心
@@ -44,6 +45,11 @@ class Settings:
         SAFETY_MARGIN_RATIO = 1.2  # 对机器人半径额外乘安全系数
         # SAFETY_MARGIN_RATIO = 0  # 测试其他服务可用性时暂时关闭
         MAX_POP_OUT_DISTANCE_RATIO = 2.5  # 如果起点在障碍物中，将其弹出，此处规定弹出距离最大值，为相对于车辆半径的比例
+
+        # * 高程图的前处理
+        FILTER_RADIUS = 2  # 引导滤波，窗口半径
+        FILTER_EPS = 1e-3  # 引导滤波，正则化参数
+        FILTER_SWITH_ON = False  # 是否启用滤波
 
         # ==============================================================================
         # 损失计算的相关参数

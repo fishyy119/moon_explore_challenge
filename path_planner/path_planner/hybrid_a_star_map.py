@@ -3,6 +3,7 @@ from math import pi
 from pathlib import Path as fPath
 from typing import List, Tuple
 
+import cv2
 import numpy as np
 import rs_planning as rs
 from dynamic_programming_heuristic import ANodeProto
@@ -41,13 +42,13 @@ class HMap:
     存在两套数值体系，int的栅格索引和float的连续坐标，原点相同
 
     * 与系统整体的地图坐标系的转换：
-    类内部处理使用前述栅格坐标系，因此在在接收其他模块输入输出时，需要额外进行SE2转换
+    类内部处理使用前述栅格坐标系，因此在在接收其他模块输入输出时，需要额外进行SE2转换，目前仅考虑平移
     TODO: 需要确认这个xy颠倒ROS信息是怎么表示
     """
 
     def __init__(
         self,
-        ob_map: NDArray[np.bool_],
+        dem_map: NDArray[np.floating],
         resolution: float = A.XY_GRID_RESOLUTION,
         yaw_resolution: float = A.YAW_GRID_RESOLUTION,
         rr: float = C.BUBBLE_R,
@@ -55,19 +56,23 @@ class HMap:
     ) -> None:
         """
         Args:
-            ob_map (NDArray[np.bool_]): 二维数组，True表示有障碍物
+            ob_map (NDArray[np.floating]): 二维数组，数字高程图
             resolution (float, optional): 地图分辨率 [m]
             yaw_resolution (float): 偏航角的分辨率 [rad]
             rr (float, optional): 巡视器安全半径 [m]
             origin (float, optional): 接收到的地图中00栅格相对于地图坐标系的位姿
         """
-        self.obstacle_map = ob_map
-        self.kdTree: cKDTree | None = None
         self.resolution = resolution
+        self.dem_map = dem_map
+        self.slope_map, self.obstacle_map = self._calculate_slope_passable(dem_map)
+        self.edf_map: NDArray[np.float64] = (
+            distance_transform_edt(~self.obstacle_map) * resolution
+        )  # [m] # type: ignore
+        self.euclidean_dilated_ob_map: NDArray[np.bool_] = self.edf_map <= rr * A.SAFETY_MARGIN_RATIO  # 根据半径膨胀
+
+        self.kdTree: cKDTree | None = None
         self.yaw_resolution = yaw_resolution
         self.rr = rr
-        self.edf_map: NDArray[np.float64] = distance_transform_edt(~ob_map) * resolution  # [m] # type: ignore
-        self.euclidean_dilated_ob_map: NDArray[np.bool_] = self.edf_map <= rr * A.SAFETY_MARGIN_RATIO  # 根据半径膨胀
 
         # 地图参数
         self.max_y_index, self.max_x_index = self.obstacle_map.shape  # 先y后x
@@ -83,6 +88,43 @@ class HMap:
         self.SE2 = origin.SE2  # 内部 -> 外部
         self.SE2inv = origin.SE2inv  # 外部 -> 内部
         self.map_yaw = origin.yaw_rad  # 内部 -> 外部（加的话）
+
+    def _calculate_slope_passable(self, dem: NDArray) -> Tuple[NDArray[np.floating], NDArray[np.bool_]]:
+        """计算坡度图"""
+        dem_f = dem.astype(dtype=np.float32)
+        if A.FILTER_SWITH_ON:
+            dem_filtered = cv2.ximgproc.guidedFilter(guide=dem_f, src=dem_f, radius=A.FILTER_RADIUS, eps=A.FILTER_EPS)
+        else:
+            dem_filtered = dem_f
+        cell_size: float = self.resolution
+        rows, cols = dem_filtered.shape
+        grad_x = np.zeros((rows - 2, cols - 2))
+        grad_y = np.zeros((rows - 2, cols - 2))
+
+        # 遍历每个 3x3 窗口
+        for i in range(1, rows - 1):
+            for j in range(1, cols - 1):
+                # 获取 3x3 窗口
+                window = dem_filtered[i - 1 : i + 2, j - 1 : j + 2]
+
+                grad_x[i - 1, j - 1] = (
+                    (window[0, 2] + 2 * window[1, 2] + window[2, 1]) - (window[0, 0] + 2 * window[1, 0] + window[0, 1])
+                ) / (8 * cell_size)
+
+                grad_y[i - 1, j - 1] = (
+                    (window[2, 0] + 2 * window[2, 1] + window[2, 2]) - (window[0, 0] + 2 * window[0, 1] + window[0, 2])
+                ) / (8 * cell_size)
+
+        # 计算坡度
+        slope = np.sqrt(grad_x**2 + grad_y**2)
+        slope_padded = np.pad(slope, pad_width=1, mode="constant", constant_values=0.0)
+        passable_map = (slope_padded > np.deg2rad(C.MAX_PASSABLE_SLOPE)).astype(np.bool_)
+
+        # 计算坡向
+        # aspect = np.arctan2(-grad_y, grad_x)
+
+        # 在外围扩充一圈为0的边缘
+        return slope_padded, passable_map
 
     @classmethod
     def from_file(cls, file: str | fPath):
