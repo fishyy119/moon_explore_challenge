@@ -27,7 +27,8 @@ class HNode:
     directions: List[bool]
     steer: float = 0.0
     parent_index: int | None = None
-    cost: float = 0
+    cost: float = 0.0
+    slope_cost: float = 0.0
 
     def __repr__(self):
         return f"Node({self.x_index},{self.y_index},{self.yaw_index})"

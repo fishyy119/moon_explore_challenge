@@ -9,7 +9,6 @@ and: me
 
 import heapq
 import math
-from dataclasses import dataclass
 from math import cos, pi, sin, tan
 from pathlib import Path as fPath
 from typing import Dict, Generator, List, Set, Tuple, cast
@@ -285,6 +284,9 @@ class HybridAStarPlanner:
             steer=steer,
         )
 
+        # 坡度惩罚项
+        node.slope_cost = tan(self.map.slope_map[node.y_index, node.x_index])
+
         return node
 
     def check_car_collision(
@@ -424,7 +426,7 @@ class HybridAStarPlanner:
 
     @staticmethod
     def calc_cost(n: HNode, h: float) -> float:
-        return n.cost + A.H_WEIGHT * h  # 启发项乘个权重
+        return n.cost + A.SLOPE_WEIGHT * n.slope_cost + A.H_WEIGHT * h  # 启发项乘个权重
 
     def get_final_path(self, closed: Dict[int, HNode], goal_node: HNode) -> HPath:
         reversed_x, reversed_y, reversed_yaw = (
