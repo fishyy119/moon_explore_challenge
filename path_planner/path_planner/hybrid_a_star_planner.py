@@ -15,7 +15,7 @@ from typing import Dict, Generator, List, Set, Tuple, cast
 
 import numpy as np
 import rs_planning as rs
-from dynamic_programming_heuristic import ANodeProto, calc_distance_heuristic
+from dynamic_programming_heuristic import calc_distance_heuristic
 from hybrid_a_star_map import HMap, HNode
 from hybrid_a_star_path import HPath
 from numpy.typing import NDArray
@@ -286,6 +286,7 @@ class HybridAStarPlanner:
 
         # 坡度惩罚项
         node.slope_cost = tan(self.map.slope_map[node.y_index, node.x_index])
+        node.rough_cost = self.map.rough_map[node.y_index, node.x_index]
 
         return node
 
@@ -426,7 +427,7 @@ class HybridAStarPlanner:
 
     @staticmethod
     def calc_cost(n: HNode, h: float) -> float:
-        return n.cost + A.SLOPE_WEIGHT * n.slope_cost + A.H_WEIGHT * h  # 启发项乘个权重
+        return n.cost + A.SLOPE_WEIGHT * n.slope_cost + A.ROUGH_WEIGHT * n.rough_cost + A.H_WEIGHT * h  # 启发项乘个权重
 
     def get_final_path(self, closed: Dict[int, HNode], goal_node: HNode) -> HPath:
         reversed_x, reversed_y, reversed_yaw = (

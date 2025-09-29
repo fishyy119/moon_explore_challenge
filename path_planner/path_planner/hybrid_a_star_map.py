@@ -5,12 +5,9 @@ from typing import List, Tuple
 
 import cv2
 import numpy as np
-import rs_planning as rs
 from dynamic_programming_heuristic import ANodeProto
-
-# from hybrid_a_star_path import HPath
 from numpy.typing import NDArray
-from scipy.ndimage import distance_transform_edt
+from scipy.ndimage import distance_transform_edt, uniform_filter
 from scipy.spatial import cKDTree
 from utils import A, C, Pose2D, S
 
@@ -29,6 +26,7 @@ class HNode:
     parent_index: int | None = None
     cost: float = 0.0
     slope_cost: float = 0.0
+    rough_cost: float = 0.0
 
     def __repr__(self):
         return f"Node({self.x_index},{self.y_index},{self.yaw_index})"
@@ -65,7 +63,7 @@ class HMap:
         """
         self.resolution = resolution
         self.dem_map = dem_map
-        self.slope_map, self.obstacle_map = self._calculate_slope_passable(dem_map)
+        self.slope_map, self.obstacle_map, self.rough_map = self._calculate_slope_passable(dem_map)
         self.edf_map: NDArray[np.float64] = (
             distance_transform_edt(~self.obstacle_map) * resolution
         )  # [m] # type: ignore
@@ -90,13 +88,18 @@ class HMap:
         self.SE2inv = origin.SE2inv  # 外部 -> 内部
         self.map_yaw = origin.yaw_rad  # 内部 -> 外部（加的话）
 
-    def _calculate_slope_passable(self, dem: NDArray) -> Tuple[NDArray[np.floating], NDArray[np.bool_]]:
-        """计算坡度图"""
+    def _calculate_slope_passable(
+        self, dem: NDArray
+    ) -> Tuple[NDArray[np.floating], NDArray[np.bool_], NDArray[np.floating]]:
+        """根据输入高程图计算各种地图"""
+        # *1.滤波
         dem_f = dem.astype(dtype=np.float32)
         if A.FILTER_SWITH_ON:
             dem_filtered = cv2.ximgproc.guidedFilter(guide=dem_f, src=dem_f, radius=A.FILTER_RADIUS, eps=A.FILTER_EPS)
         else:
             dem_filtered = dem_f
+
+        # *2.坡度图
         cell_size: float = self.resolution
         rows, cols = dem_filtered.shape
         grad_x = np.zeros((rows - 2, cols - 2))
@@ -116,16 +119,23 @@ class HMap:
                     (window[2, 0] + 2 * window[2, 1] + window[2, 2]) - (window[0, 0] + 2 * window[0, 1] + window[0, 2])
                 ) / (8 * cell_size)
 
-        # 计算坡度
-        slope = np.sqrt(grad_x**2 + grad_y**2)
-        slope_padded = np.pad(slope, pad_width=1, mode="constant", constant_values=0.0)
-        passable_map = (slope_padded > np.deg2rad(C.MAX_PASSABLE_SLOPE)).astype(np.bool_)
-
         # 计算坡向
         # aspect = np.arctan2(-grad_y, grad_x)
+        # 计算坡度
+        slope = np.sqrt(grad_x**2 + grad_y**2)
+        slope_padded = np.pad(slope, pad_width=1, mode="constant", constant_values=0.0)  # 在外围扩充一圈为0的边缘
 
-        # 在外围扩充一圈为0的边缘
-        return slope_padded, passable_map
+        # *3.限制坡度得到可通行地图（障碍物地图）
+        passable_map = (slope_padded > np.deg2rad(C.MAX_PASSABLE_SLOPE)).astype(np.bool_)
+
+        # *4.计算崎岖度地图
+        window_size = int(C.BUBBLE_R // self.resolution) | 1  # 保证是奇数
+        mean = uniform_filter(dem, size=window_size)
+        mean_sq = uniform_filter(dem**2, size=window_size)
+        var = mean_sq - mean**2
+        rough_map = np.sqrt(np.maximum(var, 0))  # 局部标准差
+
+        return slope_padded, passable_map, rough_map
 
     @classmethod
     def from_file(cls, file: str | fPath):
