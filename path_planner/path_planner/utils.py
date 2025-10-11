@@ -41,7 +41,7 @@ class Settings:
         YAW_GRID_RESOLUTION = np.deg2rad(15.0)  # 节点偏航角分辨率 [rad]
         MOTION_RESOLUTION_RATIO = 0.1  # 这个比率用于计算路径的采样分辨率，此变量描述相对于地图栅格分辨率的比例
         N_STEER = 20  # 转向指令的生成数量（节点扩展时，均匀生成20个不同角度的转向指令用于扩展节点）
-        OCCUPANCY_THRESHOLD = 65  # 占据栅格地图的概率阈值，大于此值表示为障碍物
+        # OCCUPANCY_THRESHOLD = 65  # 占据栅格地图的概率阈值，大于此值表示为障碍物
         SAFETY_MARGIN_RATIO = 1.2  # 对机器人半径额外乘安全系数
         # SAFETY_MARGIN_RATIO = 0  # 测试其他服务可用性时暂时关闭
         MAX_POP_OUT_DISTANCE_RATIO = 2.5  # 如果起点在障碍物中，将其弹出，此处规定弹出距离最大值，为相对于车辆半径的比例

@@ -3,7 +3,7 @@ from typing import cast
 import numpy as np
 import rclpy
 from geometry_msgs.msg import Pose2D
-from nav_msgs.msg import OccupancyGrid
+from grid_map_msgs.msg import GridMap
 from path_msgs.msg import CandidatePose2D
 from path_msgs.msg import HPath as HPathROS
 from path_msgs.srv import ExplorePlanning, GenerateTemplatePath, PathPlanning
@@ -18,7 +18,7 @@ from path_planner.hybrid_a_star_planner import HMap, HybridAStarPlanner
 from path_planner.utils import A, C
 from path_planner.utils import Pose2D as MyPose2D
 from rclpy.node import Node
-from std_msgs.msg import Header
+from std_msgs.msg import Float32MultiArray
 
 # from scipy.spatial.transform import Rotation as R
 
@@ -28,7 +28,8 @@ class HybridAStarNode(Node):
         super().__init__("path_planner_node")
         self.INFO = self.get_logger().info
         self.WARN = self.get_logger().warn
-        self.map_sub = self.create_subscription(OccupancyGrid, "/map", self.map_callback, 10)
+        self.ERR = self.get_logger().error
+        self.map_sub = self.create_subscription(GridMap, "/elevation_map", self.map_callback, 10)
         self.path_pub = self.create_publisher(HPathROS, "/plan_path", 10)
 
         # 规划服务
@@ -81,24 +82,33 @@ class HybridAStarNode(Node):
 
         # 缓存的ROS地图信息，需要时再构造规划器实例
         msg = self.map_msg
-        info = msg.info
-        width = info.width
-        height = info.height
-        resolution = info.resolution
-        data = np.array(msg.data, dtype=np.int8).reshape((height, width))
-        ob_map = (data > A.OCCUPANCY_THRESHOLD) | (data == -1)  # 未知区域和障碍物
+        data_array: Float32MultiArray = msg.data[0]  # type: ignore
 
-        origin = info.origin
+        # 获取行列信息
+        resolution = msg.info.resolution
+        length_x = msg.info.length_x
+        length_y = msg.info.length_y
+        n_cols = int(length_x / resolution)
+        n_rows = int(length_y / resolution)
 
-        # * 不考虑yaw
-        # q = origin.orientation
-        # quat = [q.x, q.y, q.z, q.w]
-        # r = R.from_quat(quat)
-        # roll, pitch, yaw = r.as_euler("xyz")
+        # 将一维数据转二维
+        flat_data = np.array(data_array.data, dtype=np.float32)
+        if flat_data.size != n_cols * n_rows:
+            self.WARN(f"高程图尺寸不符: {flat_data.size} != {n_cols} * {n_rows}")
+            return False
+
+        elevation = flat_data.reshape(n_rows, n_cols)
+
+        # 计算原点偏移
+        center_x = msg.info.pose.position.x
+        center_y = msg.info.pose.position.y
+        origin_x = center_x - length_x / 2.0
+        origin_y = center_y - length_y / 2.0
+
         self.map = HMap(
-            ob_map,
+            elevation,
             resolution=resolution,
-            origin=MyPose2D(origin.position.x, origin.position.y, 0),
+            origin=MyPose2D(origin_x, origin_y, 0.0),
         )
         return True
 
@@ -151,7 +161,7 @@ class HybridAStarNode(Node):
         self.INFO(f"探索规划完成，共生成 {len(response.candidates)} 个候选点")
         return response
 
-    def map_callback(self, msg: OccupancyGrid):
+    def map_callback(self, msg: GridMap):
         self.map_msg = msg
         self.map = None
 
