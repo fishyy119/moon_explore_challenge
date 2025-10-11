@@ -126,7 +126,7 @@ class HMap:
         slope_padded = np.pad(slope, pad_width=1, mode="constant", constant_values=0.0)  # 在外围扩充一圈为0的边缘
 
         # *3.限制坡度得到可通行地图（障碍物地图）
-        passable_map = (slope_padded > np.deg2rad(C.MAX_PASSABLE_SLOPE)).astype(np.bool_)
+        passable_map: NDArray[np.bool_] = (slope_padded > np.deg2rad(C.MAX_PASSABLE_SLOPE)).astype(np.bool_)
 
         # *4.计算崎岖度地图
         window_size = int(C.BUBBLE_R // self.resolution) | 1  # 保证是奇数

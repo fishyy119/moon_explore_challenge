@@ -4,6 +4,7 @@ import numpy as np
 import rclpy
 from geometry_msgs.msg import Pose2D
 from grid_map_msgs.msg import GridMap
+from numpy.typing import NDArray
 from path_msgs.msg import CandidatePose2D
 from path_msgs.msg import HPath as HPathROS
 from path_msgs.srv import ExplorePlanning, GenerateTemplatePath, PathPlanning
@@ -15,10 +16,10 @@ from path_planner.hybrid_a_star_path import (
     generate_forward_path,
 )
 from path_planner.hybrid_a_star_planner import HMap, HybridAStarPlanner
-from path_planner.utils import A, C
+from path_planner.utils import C
 from path_planner.utils import Pose2D as MyPose2D
 from rclpy.node import Node
-from std_msgs.msg import Float32MultiArray
+from std_msgs.msg import Float32MultiArray, MultiArrayDimension
 
 # from scipy.spatial.transform import Rotation as R
 
@@ -31,6 +32,7 @@ class HybridAStarNode(Node):
         self.ERR = self.get_logger().error
         self.map_sub = self.create_subscription(GridMap, "/elevation_map", self.map_callback, 10)
         self.path_pub = self.create_publisher(HPathROS, "/plan_path", 10)
+        self.map_pub = self.create_publisher(GridMap, "/other_maps", 10)
 
         # 规划服务
         self.planning_srv = self.create_service(PathPlanning, "path_planning", self.handle_plan_path)
@@ -110,6 +112,7 @@ class HybridAStarNode(Node):
             resolution=resolution,
             origin=MyPose2D(origin_x, origin_y, 0.0),
         )
+        self.map_pub.publish(self.hmap_to_gridmap_msg(self.map, msg))  # 转发其内部计算地图
         return True
 
     def handle_plan_path(self, request: PathPlanning.Request, response: PathPlanning.Response):
@@ -167,6 +170,7 @@ class HybridAStarNode(Node):
 
     @staticmethod
     def convert_to_hpath_msg(path: HPath) -> HPathROS:
+        "将路径规划结果转换为 ROS2 消息"
         msg = HPathROS()
         msg.directions = path.direction_list
 
@@ -177,6 +181,32 @@ class HybridAStarNode(Node):
             pose.theta = yaw
             msg.poses.append(pose)  # type: ignore
 
+        return msg
+
+    @staticmethod
+    def hmap_to_gridmap_msg(hmap: HMap, elevation_msg: GridMap) -> GridMap:
+        """将 HMap 处理后的高程图转换为 ROS2 GridMap 消息"""
+        msg = GridMap()
+        msg.header.frame_id = elevation_msg.header.frame_id
+        msg.info = elevation_msg.info
+
+        height, width = hmap.slope_map.shape  # 三个地图尺寸相同
+
+        # === 添加三个图层 ===
+        def make_layer(array: NDArray[np.floating]) -> Float32MultiArray:
+            arr = Float32MultiArray()
+            arr.layout.dim.append(MultiArrayDimension(label="rows", size=height, stride=height * width))  # type: ignore
+            arr.layout.dim.append(MultiArrayDimension(label="cols", size=width, stride=width))  # type: ignore
+            arr.data = array.astype(np.float32).flatten().tolist()
+            return arr
+
+        msg.layers = ["slope", "passable", "roughness"]
+        msg.basic_layers = ["passable"]  # 可选：标记一个主要显示层
+        msg.data = [
+            make_layer(hmap.slope_map),
+            make_layer(hmap.obstacle_map.astype(np.float32)),
+            make_layer(hmap.rough_map),
+        ]
         return msg
 
 
