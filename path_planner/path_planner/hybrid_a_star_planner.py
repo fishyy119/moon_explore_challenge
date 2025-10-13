@@ -285,8 +285,8 @@ class HybridAStarPlanner:
         )
 
         # 坡度惩罚项
-        node.slope_cost = tan(self.map.slope_map[node.y_index, node.x_index])
-        node.rough_cost = self.map.rough_map[node.y_index, node.x_index]
+        node.slope_cost = min(tan(s), 9999) if (s := self.map.slope_map[node.y_index, node.x_index]) >= 0 else 999999999
+        node.rough_cost = r if (r := self.map.rough_map[node.y_index, node.x_index]) >= 0 else 999999999
 
         return node
 

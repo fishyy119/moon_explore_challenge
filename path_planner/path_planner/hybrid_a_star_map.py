@@ -93,7 +93,9 @@ class HMap:
     ) -> Tuple[NDArray[np.floating], NDArray[np.bool_], NDArray[np.floating]]:
         """根据输入高程图计算各种地图"""
         # *1.滤波
+        nan_mask = np.isnan(dem)  # 特殊处理NaN
         dem_f = dem.astype(dtype=np.float32)
+        dem_f[nan_mask] = 0
         if A.FILTER_SWITH_ON:
             dem_filtered = cv2.ximgproc.guidedFilter(guide=dem_f, src=dem_f, radius=A.FILTER_RADIUS, eps=A.FILTER_EPS)
         else:
@@ -125,7 +127,7 @@ class HMap:
         slope = np.sqrt(grad_x**2 + grad_y**2)
         slope_padded = np.pad(slope, pad_width=1, mode="constant", constant_values=0.0)  # 在外围扩充一圈为0的边缘
 
-        # *3.限制坡度得到可通行地图（障碍物地图）
+        # *3.限制坡度得到可通行地图（障碍物为True）
         passable_map: NDArray[np.bool_] = (slope_padded > np.deg2rad(C.MAX_PASSABLE_SLOPE)).astype(np.bool_)
 
         # *4.计算崎岖度地图
@@ -134,6 +136,11 @@ class HMap:
         mean_sq = uniform_filter(dem**2, size=window_size)
         var = mean_sq - mean**2
         rough_map = np.sqrt(np.maximum(var, 0))  # 局部标准差
+
+        # *5.恢复nan区域
+        slope_padded[nan_mask] = -1
+        passable_map[nan_mask] = True
+        rough_map[nan_mask] = -1
 
         return slope_padded, passable_map, rough_map
 
