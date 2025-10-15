@@ -1,4 +1,5 @@
 import math
+import sys
 from functools import cached_property
 from typing import NamedTuple
 
@@ -121,6 +122,16 @@ S = Settings()
 C = S.C
 A = S.A
 E = S.E
+
+# 确保不同 import 路径指向同一模块对象
+aliases = [
+    "utils",
+    "path_planner.utils",
+]
+
+for alias in aliases:
+    if alias not in sys.modules:
+        sys.modules[alias] = sys.modules[__name__]
 
 
 class PoseDiff(NamedTuple):
