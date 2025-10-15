@@ -4,10 +4,7 @@ from pathlib import Path as fPath
 from typing import List, Tuple
 
 import numpy as np
-import rs_planning as rs
 from dynamic_programming_heuristic import ANodeProto
-
-# from hybrid_a_star_path import HPath
 from numpy.typing import NDArray
 from scipy.ndimage import distance_transform_edt
 from scipy.spatial import cKDTree
@@ -61,12 +58,21 @@ class HMap:
             rr (float, optional): 巡视器安全半径 [m]
             origin (float, optional): 接收到的地图中00栅格相对于地图坐标系的位姿
         """
-        self.obstacle_map = ob_map
+        # 输入输出要加这个转换
+        #! 仅考虑了平移，未对旋转加以测试
+        self.origin_pose = origin
+        self.SE2 = origin.SE2  # 内部 -> 外部
+        self.SE2inv = origin.SE2inv  # 外部 -> 内部
+        self.map_yaw = origin.yaw_rad  # 内部 -> 外部（加的话）
+
         self.kdTree: cKDTree | None = None
         self.resolution = resolution
         self.yaw_resolution = yaw_resolution
         self.rr = rr
-        self.edf_map: NDArray[np.float64] = distance_transform_edt(~ob_map) * resolution  # [m] # type: ignore
+        self.obstacle_map = self.add_manual_ob(ob_map)
+        self.edf_map: NDArray[np.float64] = (
+            distance_transform_edt(~self.obstacle_map) * resolution
+        )  # [m] # type: ignore
         self.euclidean_dilated_ob_map: NDArray[np.bool_] = self.edf_map <= rr * A.SAFETY_MARGIN_RATIO  # 根据半径膨胀
 
         # 地图参数
@@ -77,12 +83,50 @@ class HMap:
         self.max_yaw_index = round(pi / yaw_resolution)
         self.yaw_w = round(self.max_yaw_index - self.min_yaw_index)
 
-        # 输入输出要加这个转换
-        #! 仅考虑了平移，未对旋转加以测试
-        self.origin_pose = origin
-        self.SE2 = origin.SE2  # 内部 -> 外部
-        self.SE2inv = origin.SE2inv  # 外部 -> 内部
-        self.map_yaw = origin.yaw_rad  # 内部 -> 外部（加的话）
+    def add_manual_ob(self, ob_map: NDArray[np.bool_]) -> NDArray[np.bool_]:
+        res = self.resolution
+        h, w = ob_map.shape
+        map_size_x = w * res
+        map_size_y = h * res
+
+        # -------------------------------
+        # A. QUICK_OB: 基于10等分区块编号
+        # -------------------------------
+        for gx, gy, r_cm in A.QUICK_OB:
+            # 将编号映射到地图坐标（0~5m）
+            x_m = (gx - 0.5) * 0.5
+            y_m = (gy - 0.5) * 0.5
+            x_m = x_m - 0.2
+            y_m = -y_m + 0.9
+            r_m = r_cm / 100.0  # cm → m
+            self._draw_circle(ob_map, x_m, y_m, r_m)
+
+        # -------------------------------
+        # B. PRECISE_OB: 基于真实坐标
+        # -------------------------------
+        for x_m, y_m, r_cm in A.PRECISE_OB:
+            x_m = x_m - 0.2
+            y_m = -y_m + 0.9
+            r_m = r_cm / 100.0
+            self._draw_circle(ob_map, x_m, y_m, r_m)
+
+        return ob_map
+
+    def _draw_circle(self, ob_map: np.ndarray, x_m: float, y_m: float, r_m: float) -> None:
+        """在地图上画一个圆形障碍（单位：米）"""
+        out = np.array([[x_m], [y_m], [1]])
+        inn = self.SE2inv @ out
+        h, w = ob_map.shape
+        res = self.resolution
+
+        # 转换为像素坐标
+        cx = int(round(inn[0] / res))
+        cy = int(round(inn[1] / res))
+        r_px = int(round(r_m / res))
+
+        yy, xx = np.ogrid[:h, :w]
+        mask = (xx - cx) ** 2 + (yy - cy) ** 2 <= r_px**2
+        ob_map[mask] = True
 
     @classmethod
     def from_file(cls, file: str | fPath):

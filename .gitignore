@@ -2,6 +2,9 @@
 profile*
 rs_table*
 temp*
+*.pkl
+path_planner/plot/media
+map_passable_new.npy
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

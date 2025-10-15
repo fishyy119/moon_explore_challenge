@@ -9,7 +9,6 @@ and: me
 
 import heapq
 import math
-from dataclasses import dataclass
 from math import cos, pi, sin, tan
 from pathlib import Path as fPath
 from typing import Dict, Generator, List, Set, Tuple, cast
@@ -289,9 +288,9 @@ class HybridAStarPlanner:
 
     def check_car_collision(
         self,
-        x_list: NDArray[np.float64],
-        y_list: NDArray[np.float64],
-        yaw_list: NDArray[np.float64],
+        x_list: NDArray[np.floating],
+        y_list: NDArray[np.floating],
+        yaw_list: NDArray[np.floating],
     ) -> bool:
         # 路径分辨率小于网格分辨率，减少冗余计算
         sparse_idx = np.arange(0, len(x_list), 4)
