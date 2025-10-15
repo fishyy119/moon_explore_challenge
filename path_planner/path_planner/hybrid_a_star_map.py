@@ -120,8 +120,8 @@ class HMap:
         res = self.resolution
 
         # 转换为像素坐标
-        cx = int(round(inn[0] / res))
-        cy = int(round(inn[1] / res))
+        cx = int(round(inn[0, 0] / res))
+        cy = int(round(inn[1, 0] / res))
         r_px = int(round(r_m / res))
 
         yy, xx = np.ogrid[:h, :w]
