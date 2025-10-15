@@ -30,6 +30,7 @@ class HybridAStarNode(Node):
         self.WARN = self.get_logger().warn
         self.map_sub = self.create_subscription(OccupancyGrid, "/map", self.map_callback, 10)
         self.path_pub = self.create_publisher(HPathROS, "/plan_path", 10)
+        self.map_pub = self.create_publisher(OccupancyGrid, "/other_map", 10)
 
         # 规划服务
         self.planning_srv = self.create_service(PathPlanning, "path_planning", self.handle_plan_path)
@@ -100,6 +101,7 @@ class HybridAStarNode(Node):
             resolution=resolution,
             origin=MyPose2D(origin.position.x, origin.position.y, 0),
         )
+        self.map_pub.publish(self.hmap_to_gridmap_msg(self.map, msg))
         return True
 
     def handle_plan_path(self, request: PathPlanning.Request, response: PathPlanning.Response):
@@ -154,6 +156,7 @@ class HybridAStarNode(Node):
     def map_callback(self, msg: OccupancyGrid):
         self.map_msg = msg
         self.map = None
+        self.generate_hmap()  # 调试用，即时响应地图订阅
 
     @staticmethod
     def convert_to_hpath_msg(path: HPath) -> HPathROS:
@@ -167,6 +170,18 @@ class HybridAStarNode(Node):
             pose.theta = yaw
             msg.poses.append(pose)  # type: ignore
 
+        return msg
+
+    @staticmethod
+    def hmap_to_gridmap_msg(hmap: HMap, map_msg: OccupancyGrid) -> OccupancyGrid:
+        """将 HMap 处理后的高程图转换为 ROS2 GridMap 消息"""
+        msg = OccupancyGrid()
+        msg.header = map_msg.header
+        msg.info = map_msg.info
+
+        ob_map = hmap.obstacle_map.astype(np.uint8)
+        data = np.where(ob_map, 90, 0).astype(np.int8)
+        msg.data = data.flatten().tolist()
         return msg
 
 
