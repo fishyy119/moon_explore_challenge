@@ -39,6 +39,7 @@ try:
     MAP_PASSABLE = np.load(NPY_ROOT / "map_passable.npy")
     MAP_DEM = np.load(NPY_ROOT / "map_truth.npy").T
     MAP_EDF: NDArray[np.float64] = distance_transform_edt(~MAP_PASSABLE) / 10  # type: ignore
+    MAP_PASSABLE_NEW = np.load(NPY_ROOT / "map_passable_new.npy")
 except:
     print("plot_utils未加载资源文件")
     pass

@@ -27,6 +27,7 @@ class HNode:
     cost: float = 0.0
     slope_cost: float = 0.0
     rough_cost: float = 0.0
+    h_cost: float = 0.0
 
     def __repr__(self):
         return f"Node({self.x_index},{self.y_index},{self.yaw_index})"

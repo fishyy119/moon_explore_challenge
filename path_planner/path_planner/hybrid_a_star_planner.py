@@ -377,7 +377,8 @@ class HybridAStarPlanner:
             pass  # 调试时的一个记录断点
 
         # *两者取最大
-        return max(h_star, h_rs)
+        n.h_cost = max(h_star, h_rs)
+        return n.h_cost
 
     @staticmethod
     def calc_rs_path_cost(reed_shepp_path: rs.RPath):
@@ -426,7 +427,9 @@ class HybridAStarPlanner:
             return math.ceil(A.N_MIN + (A.N_MAX - A.N_MIN) * ratio)
 
     @staticmethod
-    def calc_cost(n: HNode, h: float) -> float:
+    def calc_cost(n: HNode, h: float | None = None) -> float:
+        if h is None:
+            h = n.h_cost
         return n.cost + A.SLOPE_WEIGHT * n.slope_cost + A.ROUGH_WEIGHT * n.rough_cost + A.H_WEIGHT * h  # 启发项乘个权重
 
     def get_final_path(self, closed: Dict[int, HNode], goal_node: HNode) -> HPath:
@@ -534,6 +537,7 @@ def main():
         start = Pose2D(40.0, 10.0, 90.0, deg=True)
         # start = Pose2D(44.0, 8.0, 90.0, deg=True)
         goal = Pose2D(45.0, 35.1, 180.0, deg=True)
+        start, goal = (Pose2D(27.0, 34.0, 180.0, deg=True), Pose2D(30.0, 43.0, 180.0, deg=True))
         # start = Pose2D(-40.0, 10.0, 90.0, deg=True)
         # goal = Pose2D(45.0, -35, 180.0, deg=True)
     else:
