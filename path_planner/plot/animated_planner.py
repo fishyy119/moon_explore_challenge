@@ -125,6 +125,8 @@ def main():
     with open(Path(__file__).parent / "frames.pkl", "wb") as f:
         pickle.dump(planner.frames, f)
     np.save(NPY_ROOT / "map_passable_new.npy", planner.map.obstacle_map)
+    np.save(NPY_ROOT / "map_slope_new.npy", planner.map.slope_map)
+    np.save(NPY_ROOT / "map_rought_new.npy", planner.map.rough_map)
 
 
 if __name__ == "__main__":
