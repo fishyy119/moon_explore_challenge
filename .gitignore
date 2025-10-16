@@ -3,8 +3,11 @@ profile*
 rs_table*
 temp*
 *.pkl
+*.png
 path_planner/plot/media
 map_passable_new.npy
+map_rought_new.npy
+map_slope_new.npy
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

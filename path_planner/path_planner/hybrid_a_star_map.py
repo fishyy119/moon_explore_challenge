@@ -84,11 +84,6 @@ class HMap:
         self.yaw_w = round(self.max_yaw_index - self.min_yaw_index)
 
     def add_manual_ob(self, ob_map: NDArray[np.bool_]) -> NDArray[np.bool_]:
-        res = self.resolution
-        h, w = ob_map.shape
-        map_size_x = w * res
-        map_size_y = h * res
-
         # -------------------------------
         # A. QUICK_OB: 基于10等分区块编号
         # -------------------------------
@@ -110,9 +105,17 @@ class HMap:
             r_m = r_cm / 100.0
             self._draw_circle(ob_map, x_m, y_m, r_m)
 
+        # -------------------------------
+        # C. 将三个平台视为障碍
+        # -------------------------------
+        if A.PLATFORM_OB:
+            self._draw_rect(ob_map, -0.2, -0.2, 0.2, 0.2)
+            self._draw_rect(ob_map, 3.1, -4.1, 2.7, -3.7)
+            self._draw_rect(ob_map, 4.1, 0.9, 3.7, 0.5)
+
         return ob_map
 
-    def _draw_circle(self, ob_map: np.ndarray, x_m: float, y_m: float, r_m: float) -> None:
+    def _draw_circle(self, ob_map: NDArray[np.bool_], x_m: float, y_m: float, r_m: float) -> None:
         """在地图上画一个圆形障碍（单位：米）"""
         out = np.array([[x_m], [y_m], [1]])
         inn = self.SE2inv @ out
@@ -127,6 +130,34 @@ class HMap:
         yy, xx = np.ogrid[:h, :w]
         mask = (xx - cx) ** 2 + (yy - cy) ** 2 <= r_px**2
         ob_map[mask] = True
+
+    def _draw_rect(self, ob_map: NDArray[np.bool_], x1_m: float, y1_m: float, x2_m: float, y2_m: float) -> None:
+        """在地图上画一个矩形障碍（由对角两点定义，单位：米）"""
+        # 将两点转换到地图坐标系
+        p1 = self.SE2inv @ np.array([[x1_m], [y1_m], [1]])
+        p2 = self.SE2inv @ np.array([[x2_m], [y2_m], [1]])
+
+        h, w = ob_map.shape
+        res = self.resolution
+
+        # 转换为像素坐标
+        x1_px = int(round(p1[0, 0] / res))
+        y1_px = int(round(p1[1, 0] / res))
+        x2_px = int(round(p2[0, 0] / res))
+        y2_px = int(round(p2[1, 0] / res))
+
+        # 计算矩形区域范围（自动处理输入顺序）
+        x_min, x_max = sorted((x1_px, x2_px))
+        y_min, y_max = sorted((y1_px, y2_px))
+
+        # 边界裁剪，防止越界
+        x_min = max(0, min(x_min, w))
+        x_max = max(0, min(x_max, w))
+        y_min = max(0, min(y_min, h))
+        y_max = max(0, min(y_max, h))
+
+        # 填充矩形区域
+        ob_map[y_min:y_max, x_min:x_max] = True
 
     @classmethod
     def from_file(cls, file: str | fPath):
