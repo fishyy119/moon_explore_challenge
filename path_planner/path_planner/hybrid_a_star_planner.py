@@ -9,6 +9,7 @@ and: me
 
 import heapq
 import math
+import time
 from math import cos, pi, sin, tan
 from pathlib import Path as fPath
 from typing import Dict, Generator, List, Set, Tuple, cast
@@ -528,6 +529,15 @@ class HybridAStarPlanner:
     #     return HPath(x.tolist(), y.tolist(), new_yaw, new_dir, cost)
 
 
+def path_length(x_list: List[float], y_list: List[float]):
+    x = np.asarray(x_list, dtype=float)
+    y = np.asarray(y_list, dtype=float)
+    dx = np.diff(x)
+    dy = np.diff(y)
+    # 每段长度 = sqrt(dx^2 + dy^2)，然后求和
+    return np.sum(np.sqrt(dx**2 + dy**2))
+
+
 def main():
     print("Start Hybrid A* planning")
 
@@ -538,6 +548,8 @@ def main():
         # start = Pose2D(44.0, 8.0, 90.0, deg=True)
         goal = Pose2D(45.0, 35.1, 180.0, deg=True)
         start, goal = (Pose2D(27.0, 34.0, 180.0, deg=True), Pose2D(30.0, 43.0, 180.0, deg=True))
+        start, goal = (Pose2D(27.0, 34.0, 180.0, deg=True), Pose2D(30.0, 38.0, 0.0, deg=True))
+        start, goal = (Pose2D(40.0, 10.0, 90.0, deg=True), Pose2D(45.0, 35.1, 180.0, deg=True))
         # start = Pose2D(-40.0, 10.0, 90.0, deg=True)
         # goal = Pose2D(45.0, -35, 180.0, deg=True)
     else:
@@ -549,6 +561,7 @@ def main():
     print("start : ", start)
     print("goal : ", goal)
     print("max curvature : ", C.MAX_C)
+    s_time = time.time()
 
     map = HMap(MAP_DEM, origin=sim_origin)
     planner = HybridAStarPlanner(map)
@@ -565,7 +578,8 @@ def main():
         plot_binary_map(map.obstacle_map, ax)
         plt_tight_show()
 
-    print(__file__ + " done!!")
+    print(f"规划耗时：{time.time() - s_time}s")
+    print(f"路径长度：{path_length(path.x_list, path.y_list)}m")
 
 
 def test_main():
@@ -618,5 +632,5 @@ if __name__ == "__main__":
         with open(profile_filename, "w", encoding="utf-8") as f:
             lp.print_stats(sort=True, stream=f)
     else:
-        show_animation = True
+        show_animation = False
         main()
