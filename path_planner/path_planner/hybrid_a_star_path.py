@@ -2,6 +2,7 @@ import math
 from typing import List
 
 import numpy as np
+from rs_planning import RPath
 from utils import Pose2D
 
 
@@ -14,6 +15,20 @@ class HPath:
         self.yaw_list = yaw_list
         self.direction_list = direction_list
         self.cost = cost
+
+    @classmethod
+    def from_rpath(cls, rpath: RPath):
+        # 将 directions 转为 bool: 1 -> True, -1 -> False
+        direction_list = [d == 1 for d in rpath.directions]
+
+        # 创建 HPath
+        return cls(
+            x_list=rpath.x.tolist(),
+            y_list=rpath.y.tolist(),
+            yaw_list=rpath.yaw.tolist(),
+            direction_list=direction_list,
+            cost=rpath.L,
+        )
 
 
 def generate_forward_path(start_pose: Pose2D, distance: float, step=0.01) -> HPath:

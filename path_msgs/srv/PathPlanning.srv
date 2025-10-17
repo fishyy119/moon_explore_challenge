@@ -4,6 +4,8 @@
 # 起点终点位姿，包括 `x`、`y` 和 `theta`
 geometry_msgs/Pose2D start
 geometry_msgs/Pose2D goal
+bool abnormal
+bool bad
 
 ---
 # ===== Response =====

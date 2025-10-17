@@ -16,10 +16,10 @@ from path_planner.hybrid_a_star_path import (
     generate_forward_path,
 )
 from path_planner.hybrid_a_star_planner import HMap, HybridAStarPlanner
+from path_planner.rs_planning import reeds_shepp_path_planning
 from path_planner.utils import A, C
 from path_planner.utils import Pose2D as MyPose2D
 from rclpy.node import Node
-from std_msgs.msg import Header
 
 # from scipy.spatial.transform import Rotation as R
 
@@ -112,7 +112,7 @@ class HybridAStarNode(Node):
 
         return response
 
-    def generate_hmap(self) -> bool:
+    def generate_hmap(self, abnormal: bool) -> bool:
         if self.map_msg is None:
             self.INFO("未收到地图，无法进行规划")
             return False
@@ -124,7 +124,10 @@ class HybridAStarNode(Node):
         height = info.height
         resolution = info.resolution
         data = np.array(msg.data, dtype=np.int8).reshape((height, width))
-        ob_map = (data > A.OCCUPANCY_THRESHOLD) | (data == -1)  # 未知区域和障碍物
+        if abnormal:
+            ob_map = data > A.OCCUPANCY_THRESHOLD  # 仅障碍物
+        else:
+            ob_map = (data > A.OCCUPANCY_THRESHOLD) | (data == -1)  # 未知区域和障碍物
 
         origin = info.origin
 
@@ -144,8 +147,33 @@ class HybridAStarNode(Node):
         return True
 
     def handle_plan_path(self, request: PathPlanning.Request, response: PathPlanning.Response):
-        if self.map is None:
-            if not self.generate_hmap():
+        if request.bad:
+            res = self.map_msg.info.resolution if self.map_msg is not None else 0.01
+            path = reeds_shepp_path_planning(
+                request.start.x,
+                request.start.y,
+                request.start.theta,
+                request.goal.x,
+                request.goal.y,
+                request.goal.theta,
+                maxc=C.MAX_C,
+                step_size=res * A.MOTION_RESOLUTION_RATIO,
+            )
+            if path is None:
+                response.success = False
+                response.reason = "规划失败"
+                return response
+            else:
+                response.success = True
+                response.reason = f"bad路径成功"
+                path_msg = self.convert_to_hpath_msg(HPath.from_rpath(path))
+                response.path = path_msg  # 路径放响应中
+                self.path_pub.publish(path_msg)
+                self.INFO("发布bad路径")
+                return response
+
+        if (self.map is None) or request.abnormal:
+            if not self.generate_hmap(abnormal=request.abnormal):
                 response.success = False
                 response.reason = "未收到地图"
                 return response
@@ -172,7 +200,7 @@ class HybridAStarNode(Node):
 
     def handle_explore_plan(self, request: ExplorePlanning.Request, response: ExplorePlanning.Response):
         if self.map is None:
-            if not self.generate_hmap():
+            if not self.generate_hmap(False):
                 return response
         self.map = cast(HMap, self.map)
         explore_planner = ExplorePlanner(self.map)
@@ -195,7 +223,7 @@ class HybridAStarNode(Node):
     def map_callback(self, msg: OccupancyGrid):
         self.map_msg = msg
         self.map = None
-        self.generate_hmap()  # 调试用，即时响应地图订阅
+        self.generate_hmap(False)  # 调试用，即时响应地图订阅
 
     @staticmethod
     def convert_to_hpath_msg(path: HPath) -> HPathROS:
