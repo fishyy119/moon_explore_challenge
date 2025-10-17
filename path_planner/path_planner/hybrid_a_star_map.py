@@ -122,6 +122,10 @@ class HMap:
         #     self._draw_rect(ob_map, 3.1, -4.1, 2.7, -3.7)
         #     self._draw_rect(ob_map, 4.1, 0.9, 3.7, 0.5)
 
+        # -------------------------------
+        # D. 手动绘制 5x5 m 边框
+        # -------------------------------
+        self._draw_frame_pixel(ob_map, 0.0 - region[0], 0.0 - region[1], 5.0 - region[0], 5.0 - region[1])
         return ob_map
 
     def _draw_circle(self, ob_map: NDArray[np.bool_], x_m: float, y_m: float, r_m: float) -> None:
@@ -167,6 +171,42 @@ class HMap:
 
         # 填充矩形区域
         ob_map[y_min:y_max, x_min:x_max] = True
+
+    def _draw_frame_pixel(
+        self, ob_map: NDArray[np.bool_], x_min_m: float, y_min_m: float, x_max_m: float, y_max_m: float
+    ) -> None:
+        """
+        在地图上画一个单像素宽的矩形边框（单位：米）
+        只设置边缘像素为 True，不填充内部
+        """
+        # 将两点转换到地图坐标系
+        p1 = self.SE2inv @ np.array([[x_min_m], [y_min_m], [1]])
+        p2 = self.SE2inv @ np.array([[x_max_m], [y_max_m], [1]])
+
+        h, w = ob_map.shape
+        res = self.resolution
+
+        # 转换为像素坐标
+        x1_px = int(round(p1[0, 0] / res))
+        y1_px = int(round(p1[1, 0] / res))
+        x2_px = int(round(p2[0, 0] / res))
+        y2_px = int(round(p2[1, 0] / res))
+
+        # 排序，确保 x_min < x_max, y_min < y_max
+        x_min_px, x_max_px = sorted((x1_px, x2_px))
+        y_min_px, y_max_px = sorted((y1_px, y2_px))
+
+        # 边界裁剪
+        x_min_px = max(0, min(x_min_px, w - 1))
+        x_max_px = max(0, min(x_max_px, w - 1))
+        y_min_px = max(0, min(y_min_px, h - 1))
+        y_max_px = max(0, min(y_max_px, h - 1))
+
+        # 设置单像素边框
+        ob_map[y_min_px, x_min_px : x_max_px + 1] = True  # 底边
+        ob_map[y_max_px, x_min_px : x_max_px + 1] = True  # 顶边
+        ob_map[y_min_px : y_max_px + 1, x_min_px] = True  # 左边
+        ob_map[y_min_px : y_max_px + 1, x_max_px] = True  # 右边
 
     @classmethod
     def from_file(cls, file: str | fPath):
