@@ -32,12 +32,21 @@ class HybridAStarNode(Node):
         # 声明参数（初始默认值）
         self.declare_parameter("quick_obstacles", "")
         self.declare_parameter("precise_obstacles", "")
+        self.declare_parameter("region", 0)
 
         self.quick_ob = self.parse_obstacles("quick_obstacles")
         self.precise_ob = self.parse_obstacles("precise_obstacles")
+        region_p = self.get_parameter("region").value
+        if region_p == 0:
+            self.region = (1.45, 0.75)
+        elif region_p == 1:
+            self.region = (1.12, 0.74)
+        else:
+            self.region = (1.45, 0.75)
 
         self.INFO(f"Quick obstacles: {self.quick_ob}")
         self.INFO(f"Precise obstacles: {self.precise_ob}")
+        self.INFO(f"起点中心坐标: {self.region}")
 
         self.map_sub = self.create_subscription(OccupancyGrid, "/map", self.map_callback, 10)
         self.path_pub = self.create_publisher(HPathROS, "/plan_path", 10)
@@ -142,6 +151,7 @@ class HybridAStarNode(Node):
             origin=MyPose2D(origin.position.x, origin.position.y, 0),
             quick_ob=self.quick_ob,
             precise_ob=self.precise_ob,
+            region=self.region,
         )
         self.map_pub.publish(self.hmap_to_gridmap_msg(self.map, msg))
         return True

@@ -51,6 +51,7 @@ class HMap:
         origin: Pose2D = Pose2D(0, 0, 0),
         quick_ob: List[Tuple[float, float, float]] = [],
         precise_ob: List[Tuple[float, float, float]] = [],
+        region: Tuple[float, float] = (1.45, 0.75),
     ) -> None:
         """
         Args:
@@ -71,7 +72,7 @@ class HMap:
         self.resolution = resolution
         self.yaw_resolution = yaw_resolution
         self.rr = rr
-        self.obstacle_map = self.add_manual_ob(ob_map, quick_ob, precise_ob)
+        self.obstacle_map = self.add_manual_ob(ob_map, quick_ob, precise_ob, region)
         self.edf_map: NDArray[np.float64] = (
             distance_transform_edt(~self.obstacle_map) * resolution
         )  # [m] # type: ignore
@@ -90,6 +91,7 @@ class HMap:
         ob_map: NDArray[np.bool_],
         quick_ob: List[Tuple[float, float, float]],
         precies_ob: List[Tuple[float, float, float]],
+        region: Tuple[float, float],
     ) -> NDArray[np.bool_]:
         # -------------------------------
         # A. QUICK_OB: 基于10等分区块编号
@@ -98,18 +100,18 @@ class HMap:
             # 将编号映射到地图坐标（0~5m）
             x_m = (gx - 0.5) * 0.5
             y_m = (gy - 0.5) * 0.5
-            x_m = x_m - 0.2
-            y_m = -y_m + 0.9
             r_m = r_cm / 100.0  # cm → m
+            x_m = x_m - region[0]
+            y_m = y_m - region[1]
             self._draw_circle(ob_map, x_m, y_m, r_m)
 
         # -------------------------------
         # B. PRECISE_OB: 基于真实坐标
         # -------------------------------
         for x_m, y_m, r_cm in precies_ob:
-            x_m = x_m - 0.2
-            y_m = -y_m + 0.9
             r_m = r_cm / 100.0
+            x_m = x_m - region[0]
+            y_m = y_m - region[1]
             self._draw_circle(ob_map, x_m, y_m, r_m)
 
         # -------------------------------
