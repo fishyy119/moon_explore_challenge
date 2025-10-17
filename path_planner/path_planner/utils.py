@@ -35,18 +35,13 @@ class Settings:
     class AStar:
         # 左上角原点，右x下y
         # 障碍物所处区块的编号(均分十份，整数)与半径 (1~10, 1~10, cm)
-        QUICK_OB: List[Tuple[int, int, float]] = [
-            (1, 1, 10.0),
-            (1, 1, 10.0),
-        ]
+        # QUICK_OB: List[Tuple[int, int, float]] = []
 
         # 障碍物所处区块的坐标与半径 (0~5m, 0~5m, cm)
-        PRECISE_OB: List[Tuple[float, float, float]] = [
-            (1.0, 1.0, 10.0),
-            (1.0, 1.0, 10.0),
-        ]
+        # PRECISE_OB: List[Tuple[float, float, float]] = []
+        # !放到命令行初始化参数中
 
-        PLATFORM_OB = True
+        # PLATFORM_OB = False # 废案
         # ==============================================================================
         # 地图的相关参数
         # ==============================================================================

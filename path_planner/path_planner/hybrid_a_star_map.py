@@ -49,6 +49,8 @@ class HMap:
         yaw_resolution: float = A.YAW_GRID_RESOLUTION,
         rr: float = C.BUBBLE_R,
         origin: Pose2D = Pose2D(0, 0, 0),
+        quick_ob: List[Tuple[float, float, float]] = [],
+        precise_ob: List[Tuple[float, float, float]] = [],
     ) -> None:
         """
         Args:
@@ -69,7 +71,7 @@ class HMap:
         self.resolution = resolution
         self.yaw_resolution = yaw_resolution
         self.rr = rr
-        self.obstacle_map = self.add_manual_ob(ob_map)
+        self.obstacle_map = self.add_manual_ob(ob_map, quick_ob, precise_ob)
         self.edf_map: NDArray[np.float64] = (
             distance_transform_edt(~self.obstacle_map) * resolution
         )  # [m] # type: ignore
@@ -83,11 +85,16 @@ class HMap:
         self.max_yaw_index = round(pi / yaw_resolution)
         self.yaw_w = round(self.max_yaw_index - self.min_yaw_index)
 
-    def add_manual_ob(self, ob_map: NDArray[np.bool_]) -> NDArray[np.bool_]:
+    def add_manual_ob(
+        self,
+        ob_map: NDArray[np.bool_],
+        quick_ob: List[Tuple[float, float, float]],
+        precies_ob: List[Tuple[float, float, float]],
+    ) -> NDArray[np.bool_]:
         # -------------------------------
         # A. QUICK_OB: 基于10等分区块编号
         # -------------------------------
-        for gx, gy, r_cm in A.QUICK_OB:
+        for gx, gy, r_cm in quick_ob:
             # 将编号映射到地图坐标（0~5m）
             x_m = (gx - 0.5) * 0.5
             y_m = (gy - 0.5) * 0.5
@@ -99,7 +106,7 @@ class HMap:
         # -------------------------------
         # B. PRECISE_OB: 基于真实坐标
         # -------------------------------
-        for x_m, y_m, r_cm in A.PRECISE_OB:
+        for x_m, y_m, r_cm in precies_ob:
             x_m = x_m - 0.2
             y_m = -y_m + 0.9
             r_m = r_cm / 100.0
@@ -108,10 +115,10 @@ class HMap:
         # -------------------------------
         # C. 将三个平台视为障碍
         # -------------------------------
-        if A.PLATFORM_OB:
-            self._draw_rect(ob_map, -0.2, -0.2, 0.2, 0.2)
-            self._draw_rect(ob_map, 3.1, -4.1, 2.7, -3.7)
-            self._draw_rect(ob_map, 4.1, 0.9, 3.7, 0.5)
+        # if A.PLATFORM_OB:
+        #     self._draw_rect(ob_map, -0.2, -0.2, 0.2, 0.2)
+        #     self._draw_rect(ob_map, 3.1, -4.1, 2.7, -3.7)
+        #     self._draw_rect(ob_map, 4.1, 0.9, 3.7, 0.5)
 
         return ob_map
 

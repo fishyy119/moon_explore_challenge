@@ -1,4 +1,5 @@
-from typing import cast
+import ast
+from typing import List, Tuple, cast
 
 import numpy as np
 import rclpy
@@ -28,6 +29,16 @@ class HybridAStarNode(Node):
         super().__init__("path_planner_node")
         self.INFO = self.get_logger().info
         self.WARN = self.get_logger().warn
+        # 声明参数（初始默认值）
+        self.declare_parameter("quick_obstacles", "")
+        self.declare_parameter("precise_obstacles", "")
+
+        self.quick_ob = self.parse_obstacles("quick_obstacles")
+        self.precise_ob = self.parse_obstacles("precise_obstacles")
+
+        self.INFO(f"Quick obstacles: {self.quick_ob}")
+        self.INFO(f"Precise obstacles: {self.precise_ob}")
+
         self.map_sub = self.create_subscription(OccupancyGrid, "/map", self.map_callback, 10)
         self.path_pub = self.create_publisher(HPathROS, "/plan_path", 10)
         self.map_pub = self.create_publisher(OccupancyGrid, "/other_map", 10)
@@ -44,6 +55,32 @@ class HybridAStarNode(Node):
         self.path_planner = None
 
         self.INFO("路径规划器初始化完毕")
+
+    def parse_obstacles(self, name: str) -> List[Tuple[float, float, float]]:
+        """
+        解析 CLI 传入的障碍物参数：
+        - 一级用分号分隔
+        - 二级用逗号分隔
+        - 自动转换为 List[Tuple[float,float,float]]
+        """
+        value_str = self.get_parameter(name).get_parameter_value().string_value
+        if not value_str:
+            return []
+
+        try:
+            s = value_str.replace(";", "],[")
+            s = f"[[{s}]]"
+            parsed = ast.literal_eval(s)
+
+            # 检查格式
+            if isinstance(parsed, list) and all(isinstance(item, list) and len(item) == 3 for item in parsed):
+                return [tuple(float(x) for x in item) for item in parsed]  # type: ignore
+            else:
+                self.get_logger().error(f"{name}: 每个子列表长度必须为3")
+                return []
+        except Exception as e:
+            self.get_logger().error(f"参数解析失败 '{name}': {e}")
+            return []
 
     def handle_template_path(self, request: GenerateTemplatePath.Request, response: GenerateTemplatePath.Response):
         # 将 geometry_msgs/Pose2D 转为你的自定义 Pose2D
@@ -100,6 +137,8 @@ class HybridAStarNode(Node):
             ob_map,
             resolution=resolution,
             origin=MyPose2D(origin.position.x, origin.position.y, 0),
+            quick_ob=self.quick_ob,
+            precise_ob=self.precise_ob,
         )
         self.map_pub.publish(self.hmap_to_gridmap_msg(self.map, msg))
         return True
