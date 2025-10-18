@@ -17,11 +17,11 @@ class Settings:
         # ? 后轴到中心139mm
         # ? 最小包络圆543mm
 
-        WB = 0.21  # 轴距（rear to front wheel）
-        W = 0.375  # 车轮廓宽（width of car）
+        WB = 0.247  # 轴距（rear to front wheel）
+        W = 0.340  # 车轮廓宽（width of car）
         LF = 0.31  # 后轴到前端（distance from rear to vehicle front end）
         LB = 0.09  # 后轴到后端（distance from rear to vehicle back end）
-        MAX_STEER = np.deg2rad(25.0)  # 前轮最大转向角 [rad] (maximum steering angle)
+        MAX_STEER = np.deg2rad(15.0)  # 前轮最大转向角 [rad] (maximum steering angle)
         MAX_C = math.tan(MAX_STEER) / WB  # 最大转弯曲率 [1/m]
 
         BUBBLE_DIST = (LF - LB) / 2.0  # 后轴到中心（distance from rear to center of vehicle.）

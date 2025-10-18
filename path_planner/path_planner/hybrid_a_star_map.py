@@ -52,6 +52,7 @@ class HMap:
         quick_ob: List[Tuple[float, float, float]] = [],
         precise_ob: List[Tuple[float, float, float]] = [],
         region: Tuple[float, float] = (1.45, 0.75),
+        manual: bool = True,
     ) -> None:
         """
         Args:
@@ -72,7 +73,10 @@ class HMap:
         self.resolution = resolution
         self.yaw_resolution = yaw_resolution
         self.rr = rr
-        self.obstacle_map = self.add_manual_ob(ob_map, quick_ob, precise_ob, region)
+        if manual:
+            self.obstacle_map = self.add_manual_ob(ob_map, quick_ob, precise_ob, region)
+        else:
+            self.obstacle_map = ob_map
         self.edf_map: NDArray[np.float64] = (
             distance_transform_edt(~self.obstacle_map) * resolution
         )  # [m] # type: ignore
